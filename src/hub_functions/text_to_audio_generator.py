@@ -157,7 +157,11 @@ def generate_multi_speakers_audio(
             # Save to audio file:
             audio_file = output_directory / f"{text_file.stem}.{file_format}"
             torchaudio.save(
-                uri=audio_file, src=audio, sample_rate=sample_rate, format=file_format, bits_per_sample=8,
+                uri=audio_file,
+                src=audio,
+                sample_rate=sample_rate,
+                format=file_format,
+                bits_per_sample=8,
             )
             # Collect to the successes:
             successes.append([text_file.name, audio_file.name])

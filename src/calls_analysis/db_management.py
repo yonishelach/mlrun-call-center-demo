@@ -29,8 +29,8 @@ from sqlalchemy import (  # ForeignKey,
     bindparam,
     create_engine,
     insert,
-    update,
     select,
+    update,
 )
 from sqlalchemy.orm import (  # relationship,
     Mapped,
@@ -90,29 +90,67 @@ class Call(Base):
     )
     date: Mapped[datetime.date] = mapped_column(Date())
     time: Mapped[datetime.time] = mapped_column(Time())
-    duration: Mapped[int] = mapped_column(Integer())
     status: Mapped[CallStatus] = mapped_column(Enum(CallStatus))
     # Files:
     audio_file: Mapped[str] = mapped_column(String(length=FILE_PATH_LENGTH))
     # TODO: processed_audio_file: Mapped[Optional[str]] = mapped_column(String(length=FILE_PATH_LENGTH))
     transcription_file: Mapped[Optional[str]] = mapped_column(
-        String(length=FILE_PATH_LENGTH)
+        String(length=FILE_PATH_LENGTH),
+        nullable=True,
+        default=None,
     )
     translation_file: Mapped[Optional[str]] = mapped_column(
-        String(length=FILE_PATH_LENGTH)
+        String(length=FILE_PATH_LENGTH),
+        nullable=True,
+        default=None,
     )
     anonymized_file: Mapped[Optional[str]] = mapped_column(
-        String(length=FILE_PATH_LENGTH)
+        String(length=FILE_PATH_LENGTH),
+        nullable=True,
+        default=None,
     )
     # Transcription:
-    language: Mapped[Optional[str]] = mapped_column(String(length=3))
-    language_probability: Mapped[Optional[float]] = mapped_column(Float())
+    duration: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
+    language: Mapped[Optional[str]] = mapped_column(
+        String(length=3),
+        nullable=True,
+        default=None,
+    )
+    language_probability: Mapped[Optional[float]] = mapped_column(
+        Float(),
+        nullable=True,
+        default=None,
+    )
     # Analysis:
-    topic: Mapped[Optional[str]] = mapped_column(String(length=50))
-    summary: Mapped[Optional[str]] = mapped_column(String(length=1000))
-    concern_addressed: Mapped[Optional[bool]] = mapped_column(Boolean())
-    client_tone: Mapped[Optional[str]] = mapped_column(String(length=20))
-    agent_tone: Mapped[Optional[str]] = mapped_column(String(length=20))
+    topic: Mapped[Optional[str]] = mapped_column(
+        String(length=50),
+        nullable=True,
+        default=None,
+    )
+    summary: Mapped[Optional[str]] = mapped_column(
+        String(length=1000),
+        nullable=True,
+        default=None,
+    )
+    concern_addressed: Mapped[Optional[bool]] = mapped_column(
+        Boolean(),
+        nullable=True,
+        default=None,
+    )
+    client_tone: Mapped[Optional[str]] = mapped_column(
+        String(length=20),
+        nullable=True,
+        default=None,
+    )
+    agent_tone: Mapped[Optional[str]] = mapped_column(
+        String(length=20),
+        nullable=True,
+        default=None,
+    )
 
     # TODO: One-to-many relationships:
     # client: Mapped["Client"] = relationship(back_populates="calls", lazy=True)
