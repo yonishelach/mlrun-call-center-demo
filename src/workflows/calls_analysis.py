@@ -14,6 +14,7 @@
 import os
 from typing import List
 
+import kfp
 import mlrun
 
 from src.common import TONES, TOPICS, CallStatus
@@ -78,7 +79,10 @@ QUESTIONS_WRAPPER = (
     "<|im_start|>assistant:\n"
 )
 
+output_directory = os.path.abspath("./outputs")
 
+
+@kfp.dsl.pipeline()
 def pipeline(
     data_path: str,
     speaker_per_channel: bool,
@@ -87,17 +91,14 @@ def pipeline(
     pii_recognition_entities: List[str],
     pii_recognition_entity_operator_map: List[str],
     question_answering_model: str,
-    output_directory: str,
 ):
-    # Create the output directory:
-    os.makedirs(output_directory, exist_ok=True)
-
     # Get the project:
     project = mlrun.get_current_project()
 
     # Insert new calls:
     db_management_function = project.get_function("db-management")
-    insert_calls_run = db_management_function.run(
+    db_management_function.apply(mlrun.auto_mount())
+    insert_calls_run = project.run_function(
         handler="insert_calls",
         inputs={"calls": data_path},
         returns=[
@@ -107,7 +108,9 @@ def pipeline(
 
     # Speech diarize:
     speech_diarization_function = project.get_function("speech-diarization")
-    diarize_run = speech_diarization_function.run(
+    speech_diarization_function.apply(mlrun.auto_mount())
+    diarize_run = project.run_function(
+        speech_diarization_function,
         handler="diarize",
         inputs={"data_path": insert_calls_run.outputs["audio_files"]},
         params={
@@ -119,7 +122,8 @@ def pipeline(
     )
 
     # Update diarization state:
-    update_calls_post_speech_diarization_run = db_management_function.run(
+    update_calls_post_speech_diarization_run = project.run_function(
+        db_management_function,
         handler="update_calls",
         inputs={"data": insert_calls_run.outputs["calls_batch"]},
         params={
@@ -131,7 +135,9 @@ def pipeline(
 
     # Transcribe:
     transcription_function = project.get_function("transcription")
-    transcribe_run = transcription_function.run(
+    transcription_function.apply(mlrun.auto_mount())
+    transcribe_run = project.run_function(
+        transcription_function,
         handler="transcribe",
         inputs={
             "data_path": insert_calls_run.outputs["audio_files"],
@@ -150,7 +156,8 @@ def pipeline(
     )
 
     # Update transcription state:
-    update_calls_post_transcription_run = db_management_function.run(
+    update_calls_post_transcription_run = project.run_function(
+        db_management_function,
         handler="update_calls",
         inputs={"data": transcribe_run.outputs["transcriptions_dataframe"]},
         params={
@@ -162,7 +169,9 @@ def pipeline(
 
     # Recognize PII:
     pii_recognition_function = project.get_function("pii-recognition")
-    recognize_pii_run = pii_recognition_function.run(
+    pii_recognition_function.apply(mlrun.auto_mount())
+    recognize_pii_run = project.run_function(
+        pii_recognition_function,
         handler="recognize_pii",
         inputs={"input_path": transcribe_run.outputs["transcriptions"]},
         params={
@@ -183,7 +192,8 @@ def pipeline(
     )
 
     # Update PII state:
-    update_calls_post_pii_recognition_run = db_management_function.run(
+    update_calls_post_pii_recognition_run = project.run_function(
+        db_management_function,
         handler="update_calls",
         inputs={"data": recognize_pii_run.outputs["anonymized_files_dataframe"]},
         params={
@@ -195,7 +205,9 @@ def pipeline(
 
     # Question-answering:
     question_answering_function = project.get_function("question-answering")
-    answer_questions_run = question_answering_function.run(
+    question_answering_function.apply(mlrun.auto_mount())
+    answer_questions_run = project.run_function(
+        question_answering_function,
         handler="answer_questions",
         inputs={"data_path": recognize_pii_run.outputs["anonymized_files"]},
         params={
@@ -231,7 +243,8 @@ def pipeline(
     )
 
     # Update question answering state:
-    update_calls_post_question_answering_run = db_management_function.run(
+    update_calls_post_question_answering_run = project.run_function(
+        db_management_function,
         handler="update_calls",
         inputs={"data": answer_questions_run.outputs["anonymized_files_dataframe"]},
         params={

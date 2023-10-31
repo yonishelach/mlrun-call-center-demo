@@ -13,12 +13,14 @@
 # limitations under the License.
 import os
 from typing import List
-
+import kfp
 import mlrun
 
+output_directory = os.path.abspath("./outputs")
 
+
+@kfp.dsl.pipeline()
 def pipeline(
-    output_directory: str,
     amount: int,
     generation_model: str,
     text_to_speech_model: str,
@@ -31,15 +33,14 @@ def pipeline(
     from_time: str,
     to_time: str,
 ):
-    # Create the output directory:
-    os.makedirs(output_directory, exist_ok=True)
-
     # Get the project:
     project = mlrun.get_current_project()
 
     # Generate conversations texts:
     conversations_generator_function = project.get_function("conversations-generator")
-    generate_conversations_run = conversations_generator_function.run(
+    conversations_generator_function.apply(mlrun.auto_mount())
+    generate_conversations_run = project.run_function(
+        conversations_generator_function,
         handler="generate_conversations",
         params={
             "amount": amount,
@@ -64,7 +65,9 @@ def pipeline(
 
     # Text to audio:
     text_to_audio_generator_function = project.get_function("text-to-audio-generator")
-    generate_multi_speakers_audio_run = text_to_audio_generator_function.run(
+    text_to_audio_generator_function.apply(mlrun.auto_mount())
+    generate_multi_speakers_audio_run = project.run_function(
+        text_to_audio_generator_function,
         handler="generate_multi_speakers_audio",
         inputs={"data_path": generate_conversations_run.outputs["conversations"]},
         params={
@@ -81,7 +84,8 @@ def pipeline(
     )
 
     # Create the input batch:
-    create_batch_for_analysis_run = conversations_generator_function.run(
+    create_batch_for_analysis_run = project.run_function(
+        conversations_generator_function,
         handler="create_batch_for_analysis",
         inputs={
             "conversations_data": generate_conversations_run.outputs["metadata"],
@@ -89,5 +93,5 @@ def pipeline(
                 "audio_files_dataframe"
             ],
         },
-        returns=["calls_batch: file"],
+        returns=["calls_batch: dataset"],
     )
