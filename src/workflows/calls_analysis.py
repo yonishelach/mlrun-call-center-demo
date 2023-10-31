@@ -120,7 +120,7 @@ def pipeline(
             "device": "cuda",
             "speakers_labels": ["Agent", "Client"],
             "separate_by_channels": speaker_per_channel,
-            "cur_dir": output_directory,  # TODO: Delete once merged to mlrun/demos
+            "cur_dir": os.path.join(output_directory, "audio_files"),  # TODO: Delete once merged to mlrun/demos
         },
         returns=["speech_diarization: file", "diarize_errors: file"],
     )
@@ -151,7 +151,7 @@ def pipeline(
             "model_name": transcribe_model,
             "device": "cuda",
             "output_directory": os.path.join(output_directory, "transcriptions"),
-            "cur_dir": output_directory,  # TODO: Delete once merged to mlrun/demos
+            "cur_dir": os.path.join(output_directory, "audio_files"),  # TODO: Delete once merged to mlrun/demos
         },
         returns=[
             "transcriptions: path",
