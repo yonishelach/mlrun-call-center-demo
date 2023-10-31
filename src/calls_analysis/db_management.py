@@ -140,7 +140,6 @@ def insert_calls(
     :param context:
     :param calls:
 
-    :return:
     """
     # Create an engine:
     engine = _get_engine(context_or_project=context)

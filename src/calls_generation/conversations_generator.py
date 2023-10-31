@@ -65,7 +65,6 @@ def generate_conversations(
     :param n_agents:
     :param n_clients:
 
-    :return:
     """
     # Get the minimum and maximum amount of words:
     min_words = WORDS_IN_1_MINUTE * min_time
@@ -93,8 +92,8 @@ def generate_conversations(
         "Generate a conversation between an internet provider call center agent (“Iguazio-Mckinsey Internet”) and "
         "a client in {language}.\n"
         "Format the conversation as follow:\n"
-        "Agent: ...\n"
-        "Client: ...\n"
+        "Agent: <text here>\n"
+        "Client: <text here>>\n"
         "The conversations has to include at least {min_words} words and no more than {max_words} words.\n"
         "It has to be about a client who is calling to discuss about {topic}.\n"
         "The agent {concern_addressed} address the client's concern.\n"
@@ -158,7 +157,7 @@ def generate_conversations(
         conversations.append(
             [
                 conversation_id,
-                conversation_text_path,
+                conversation_text_path.name,
                 random.choice(clients),
                 random.choice(agents),
                 date,

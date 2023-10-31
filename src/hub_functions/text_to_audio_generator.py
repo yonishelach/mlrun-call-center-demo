@@ -52,7 +52,6 @@ def generate_multi_speakers_audio(
     :param file_format:
     :param verbose:
 
-    :return:
     """
     # Get the input text files to turn to audio:
     data_path = pathlib.Path(data_path).absolute()
@@ -161,12 +160,12 @@ def generate_multi_speakers_audio(
                 uri=audio_file, src=audio, sample_rate=sample_rate, format=file_format
             )
             # Collect to the successes:
-            successes.append([text_file, audio_file])
+            successes.append([text_file.name, audio_file.name])
         except Exception as exception:
             # Note the exception as error in the dictionary:
             # TODO: if verbose: logger.warning(f"Error in file: '{text_file.name}'")
             print(exception)
-            errors[str(text_file.name)] = str(exception)
+            errors[text_file.name] = str(exception)
             continue
 
         # Construct the translations dataframe:
