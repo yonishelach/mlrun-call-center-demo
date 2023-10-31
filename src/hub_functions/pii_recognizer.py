@@ -892,7 +892,7 @@ def recognize_pii(
     # Create the output directory:
     output_directory = pathlib.Path(output_directory)
     if not output_directory.exists():
-        output_directory.mkdir()
+        output_directory.mkdir(parents=True, exist_ok=True)
 
     txt_files_directory = pathlib.Path(input_path)
     successes = []

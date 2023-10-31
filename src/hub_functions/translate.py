@@ -204,7 +204,7 @@ def translate(
 
     # Create the output directory:
     output_directory = pathlib.Path(output_directory)
-    output_directory.mkdir(exist_ok=True)
+    output_directory.mkdir(parents=True, exist_ok=True)
 
     # Prepare the translation keyword arguments:
     translation_kwargs = translation_kwargs or {}

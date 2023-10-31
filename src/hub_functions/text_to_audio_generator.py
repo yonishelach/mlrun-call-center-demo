@@ -166,22 +166,21 @@ def generate_multi_speakers_audio(
             # TODO: if verbose: logger.warning(f"Error in file: '{text_file.name}'")
             print(exception)
             errors[text_file.name] = str(exception)
-            continue
 
-        # Construct the translations dataframe:
-        successes = pd.DataFrame(
-            successes,
-            columns=["text_file", "audio_file"],
-        )
+    # Construct the translations dataframe:
+    successes = pd.DataFrame(
+        successes,
+        columns=["text_file", "audio_file"],
+    )
 
-        # Print the head of the produced dataframe and return:
-        # if verbose:
-        #     _LOGGER.info(
-        #         f"Done ({successes.shape[0]}/{len(text_files)})\n"
-        #         f"Translations summary:\n"
-        #         f"{successes.head()}"
-        #     )
-        return str(output_directory), successes, errors
+    # Print the head of the produced dataframe and return:
+    # if verbose:
+    #     _LOGGER.info(
+    #         f"Done ({successes.shape[0]}/{len(text_files)})\n"
+    #         f"Translations summary:\n"
+    #         f"{successes.head()}"
+    #     )
+    return str(output_directory), successes, errors
 
 
 def _get_text_files(

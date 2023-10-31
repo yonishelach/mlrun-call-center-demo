@@ -71,7 +71,7 @@ def pipeline(
             "output_directory": os.path.join(output_directory, "audio_files"),
             "speakers": {"Agent": 0, "Client": 1},
             "available_voices": available_voices,
-            "use_small_models": text_to_speech_model == "big",
+            "use_small_models": text_to_speech_model == "small",
         },
         returns=[
             "audio_files: path",
