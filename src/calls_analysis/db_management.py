@@ -133,7 +133,7 @@ def create_tables(project: mlrun.projects.MlrunProject):
 
 
 def insert_calls(
-    context: mlrun.MLClientCtx, calls: list
+    context: mlrun.MLClientCtx, calls: pd.DataFrame
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
 
@@ -147,14 +147,16 @@ def insert_calls(
     # If calls are a dataframe,
     session = sessionmaker(engine)
 
+    # Turn calls into list of dictionaries (records):
+    records = calls.to_dict(orient="records")
+
     # Insert the new calls into the table and commit:
     with session.begin() as sess:
-        sess.execute(insert(Call), calls)
+        sess.execute(insert(Call), records)
 
     # Return the metadata and audio files:
-    calls_dataframe = pd.DataFrame.from_records(data=calls)
-    audio_files = list(calls_dataframe["audio_file"])
-    return calls_dataframe, audio_files
+    audio_files = list(calls["audio_file"])
+    return calls, audio_files
 
 
 def update_calls(

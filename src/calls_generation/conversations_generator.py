@@ -220,10 +220,10 @@ def _get_random_date(min_date, max_date) -> datetime.date:
 
 def create_batch_for_analysis(
     conversations_data: pd.DataFrame, audio_files: pd.DataFrame
-) -> list:
+) -> pd.DataFrame:
     conversations_data = conversations_data.join(
         other=audio_files.set_index(keys="text_file"), on="text_file"
     )
     conversations_data.drop(columns="text_file", inplace=True)
     conversations_data.dropna(inplace=True)
-    return conversations_data.to_dict(orient="records")
+    return conversations_data
