@@ -151,6 +151,7 @@ def pipeline(
             "model_name": transcribe_model,
             "device": "cuda",
             "output_directory": os.path.join(output_directory, "transcriptions"),
+            "audio_duration": True,
             "cur_dir": os.path.join(output_directory, "audio_files"),  # TODO: Delete once merged to mlrun/demos
         },
         returns=[
