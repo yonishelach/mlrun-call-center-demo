@@ -133,22 +133,24 @@ def create_tables(project: mlrun.projects.MlrunProject):
 
 
 def insert_calls(
-    context: mlrun.MLClientCtx, calls: list
+    context: mlrun.MLClientCtx, calls: pd.DataFrame
 ) -> Tuple[pd.DataFrame, List[str]]:
     # Create an engine:
     engine = _get_engine(context_or_project=context)
 
-    # If calls are a dataframe,
+    # Initialize a session maker:
     session = sessionmaker(engine)
+
+    # Cast data from dataframe to a list of dictionaries:
+    records = calls.to_dict(orient="records")
 
     # Insert the new calls into the table and commit:
     with session.begin() as sess:
-        sess.execute(insert(Call), calls)
+        sess.execute(insert(Call), records)
 
     # Return the metadata and audio files:
-    calls_dataframe = pd.DataFrame.from_records(data=calls)
-    audio_files = list(calls_dataframe["audio_file"])
-    return calls_dataframe, audio_files
+    audio_files = list(calls["audio_file"])
+    return calls, audio_files
 
 
 def update_calls(
@@ -169,7 +171,7 @@ def update_calls(
     # Create an engine:
     engine = _get_engine(context_or_project=context)
 
-    # If calls are a dataframe,
+    # Initialize a session maker:
     session = sessionmaker(engine)
 
     # Add the status to the dataframe:
@@ -189,9 +191,10 @@ def get_calls(project: mlrun.projects.MlrunProject) -> pd.DataFrame:
     # Create an engine:
     engine = _get_engine(context_or_project=project)
 
-    # If calls are a dataframe,
+    # Initialize a session maker:
     session = sessionmaker(engine)
 
+    # Select all calls:
     with session.begin() as sess:
         calls = pd.read_sql(select(Call), sess.connection())
 
