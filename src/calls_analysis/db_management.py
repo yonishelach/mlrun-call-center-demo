@@ -215,6 +215,11 @@ def update_calls(
     # Add the status to the dataframe:
     data["status"] = [CallStatus(status)] * len(data)
 
+    # Make sure keys are not duplicates (so we can update by the key with `bindparam`):
+    if data_key == table_key:
+        data_key += "_2"
+        data.rename(columns={table_key: data_key}, inplace=True)
+
     # Cast data from dataframe to a list of dictionaries:
     data = data.to_dict(orient="records")
 
