@@ -242,6 +242,15 @@ def _set_calls_analysis_functions(
         apply_auto_mount=apply_auto_mount,
     )
 
+    # Postprocessing:
+    _set_function(
+        project=project,
+        func="./src/calls_analysis/postprocessing.py",
+        name="postprocessing",
+        kind="job",
+        apply_auto_mount=apply_auto_mount,
+    )
+
 
 def _set_workflows(project: mlrun.projects.MlrunProject):
     project.set_workflow(

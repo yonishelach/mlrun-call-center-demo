@@ -247,11 +247,21 @@ def pipeline(
         ],
     )
 
+    # Postprocess answers:
+    postprocessing_function = project.get_function("postprocessing")
+    postprocessing_function.apply(mlrun.auto_mount())
+    postprocess_answers_run = project.run_function(
+        postprocessing_function,
+        handler="postprocess_answers",
+        inputs={"answers": answer_questions_run.outputs["question_answering_dataframe"]},
+        returns=["processed_answers: dataset"],
+    )
+
     # Update question answering state:
     update_calls_post_question_answering_run = project.run_function(
         db_management_function,
         handler="update_calls",
-        inputs={"data": answer_questions_run.outputs["question_answering_dataframe"]},
+        inputs={"data": postprocess_answers_run.outputs["processed_answers"]},
         params={
             "status": CallStatus.ANALYZED.value,
             "table_key": "anonymized_file",
