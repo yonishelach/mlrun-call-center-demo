@@ -99,10 +99,12 @@ def pipeline(
     db_management_function = project.get_function("db-management")
     db_management_function.apply(mlrun.auto_mount())
     insert_calls_run = project.run_function(
+        db_management_function,
         handler="insert_calls",
         inputs={"calls": data_path},
         returns=[
-            "calls_batch: dataset" "audio_files: file",
+            "calls_batch: dataset",
+            "audio_files: file",
         ],
     )
 
@@ -246,7 +248,7 @@ def pipeline(
     update_calls_post_question_answering_run = project.run_function(
         db_management_function,
         handler="update_calls",
-        inputs={"data": answer_questions_run.outputs["anonymized_files_dataframe"]},
+        inputs={"data": answer_questions_run.outputs["question_answering_dataframe"]},
         params={
             "status": CallStatus.ANALYZED.value,
             "table_key": "anonymized_file",

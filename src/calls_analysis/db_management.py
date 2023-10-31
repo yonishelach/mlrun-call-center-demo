@@ -30,6 +30,7 @@ from sqlalchemy import (  # ForeignKey,
     create_engine,
     insert,
     update,
+    select,
 )
 from sqlalchemy.orm import (  # relationship,
     Mapped,
@@ -42,7 +43,6 @@ from src.common import CallStatus, ProjectSecrets
 
 ID_LENGTH = 32
 FILE_PATH_LENGTH = 500
-
 
 Base = declarative_base()
 
@@ -133,30 +133,22 @@ def create_tables(project: mlrun.projects.MlrunProject):
 
 
 def insert_calls(
-    context: mlrun.MLClientCtx, calls: pd.DataFrame
+    context: mlrun.MLClientCtx, calls: list
 ) -> Tuple[pd.DataFrame, List[str]]:
-    """
-
-    :param context:
-    :param calls:
-
-    """
     # Create an engine:
     engine = _get_engine(context_or_project=context)
 
     # If calls are a dataframe,
     session = sessionmaker(engine)
 
-    # Turn calls into list of dictionaries (records):
-    records = calls.to_dict(orient="records")
-
     # Insert the new calls into the table and commit:
     with session.begin() as sess:
-        sess.execute(insert(Call), records)
+        sess.execute(insert(Call), calls)
 
     # Return the metadata and audio files:
-    audio_files = list(calls["audio_file"])
-    return calls, audio_files
+    calls_dataframe = pd.DataFrame.from_records(data=calls)
+    audio_files = list(calls_dataframe["audio_file"])
+    return calls_dataframe, audio_files
 
 
 def update_calls(
@@ -193,14 +185,24 @@ def update_calls(
         )
 
 
+def get_calls(project: mlrun.projects.MlrunProject) -> pd.DataFrame:
+    # Create an engine:
+    engine = _get_engine(context_or_project=project)
+
+    # If calls are a dataframe,
+    session = sessionmaker(engine)
+
+    with session.begin() as sess:
+        calls = pd.read_sql(select(Call), sess.connection())
+
+    return calls
+
+
 def _get_engine(
     context_or_project: Union[mlrun.MLClientCtx, mlrun.projects.MlrunProject]
 ) -> Engine:
     # Get the url and connection arguments:
     url = context_or_project.get_secret(key=ProjectSecrets.MYSQL_URL)
-    connect_args = context_or_project.get_secret(key=ProjectSecrets.MYSQL_CONNECT_ARGS)
-    if connect_args:
-        connect_args = ast.literal_eval(connect_args)
 
     # Create an engine:
-    return create_engine(url=url, connect_args=connect_args)
+    return create_engine(url=url)

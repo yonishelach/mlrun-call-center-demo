@@ -26,7 +26,6 @@ def setup(
     source: str = None,
     default_image: str = None,
     gpus: int = None,
-    mysql_connect_args: dict = None,
     apply_auto_mount: bool = False,
 ) -> mlrun.projects.MlrunProject:
     """
@@ -41,7 +40,6 @@ def setup(
     :param source:
     :param default_image:
     :param gpus:
-    :param mysql_connect_args:
     :param apply_auto_mount:
 
     :returns: A fully prepared project for this demo.
@@ -65,7 +63,6 @@ def setup(
         openai_base=openai_base,
         huggingface_token=huggingface_token,
         mysql_url=mysql_url,
-        mysql_connect_args=mysql_connect_args,
     )
 
     # Set the functions:
@@ -104,6 +101,7 @@ def _build_image(project: mlrun.projects.MlrunProject):
             "pip install langchain openai",
             "pip install git+https://github.com/suno-ai/bark.git",  # suno-bark
             "pip install streamlit st-annotated-text spacy librosa presidio-anonymizer presidio-analyzer nltk flair",
+            "pip install -U SQLAlchemy",
             "pip uninstall -y onnxruntime-gpu",
             "pip uninstall -y onnxruntime",
             "pip install onnxruntime-gpu",
@@ -119,22 +117,16 @@ def _set_secrets(
     openai_base: str,
     huggingface_token: str,
     mysql_url: str,
-    mysql_connect_args: dict = None,
 ):
-    # Must have secrets:
-    secrets = {
-        ProjectSecrets.OPENAI_API_KEY: openai_key,
-        ProjectSecrets.OPENAI_API_BASE: openai_base,
-        ProjectSecrets.HUGGING_FACE_HUB_TOKEN: huggingface_token,
-        ProjectSecrets.MYSQL_URL: mysql_url,
-    }
-
-    # Optional secrets:
-    if mysql_connect_args:
-        secrets[ProjectSecrets.MYSQL_CONNECT_ARGS] = str(mysql_connect_args)
-
     # Set the secrets in the project:
-    project.set_secrets(secrets=secrets)
+    project.set_secrets(
+        secrets={
+            ProjectSecrets.OPENAI_API_KEY: openai_key,
+            ProjectSecrets.OPENAI_API_BASE: openai_base,
+            ProjectSecrets.HUGGING_FACE_HUB_TOKEN: huggingface_token,
+            ProjectSecrets.MYSQL_URL: mysql_url,
+        }
+    )
 
 
 def _set_function(
