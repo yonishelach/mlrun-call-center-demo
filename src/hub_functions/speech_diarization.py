@@ -145,6 +145,7 @@ def diarize(
     minimum_speakers: int = None,
     maximum_speakers: int = None,
     verbose: bool = False,
+    cur_dir: str = None  # TODO: Delete once merged to mlrun/functions
 ) -> Tuple[Dict[str, List[Tuple[float, float, str]]], Dict[str, str]]:
     """
     Perform speech diarization on given audio files using pyannote-audio (https://github.com/pyannote/pyannote-audio).
@@ -207,6 +208,11 @@ def diarize(
         audio_files = _get_audio_files(data_path=data_path)
     else:  # Should be a list of files.
         audio_files = data_path
+
+    # TODO: Delete once merged to mlrun/functions
+    if cur_dir:
+        cur_dir = pathlib.Path(cur_dir)
+        audio_files = [cur_dir / file for file in audio_files]
 
     # Get the Huggingface access token:
     access_token = _get_access_token(parameter=access_token)

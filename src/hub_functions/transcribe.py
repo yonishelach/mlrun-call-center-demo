@@ -149,6 +149,7 @@ def transcribe(
     init_kwargs: dict = None,
     transcribe_kwargs: dict = None,
     verbose: bool = False,
+    cur_dir: str = None,
 ) -> Tuple[str, pd.DataFrame, dict]:
     """
     Transcribe audio files into text files and collect additional data. The end result is a directory of transcribed
@@ -204,6 +205,11 @@ def transcribe(
         audio_files = data_path
     if verbose:
         _LOGGER.info(f"Collected {len(audio_files)} audio files.")
+
+    # TODO: Delete once merged to mlrun/functions
+    if cur_dir:
+        cur_dir = pathlib.Path(cur_dir)
+        audio_files = [cur_dir / file for file in audio_files]
 
     # Load the whisper model:
     if verbose:
