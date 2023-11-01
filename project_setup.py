@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
+
 import mlrun
 
 from src.calls_analysis.db_management import create_tables
@@ -19,31 +21,26 @@ from src.common import ProjectSecrets
 
 def setup(
     project: mlrun.projects.MlrunProject,
-    openai_key: str,
-    openai_base: str,
-    huggingface_token: str,
-    mysql_url: str,
-    source: str = None,
-    default_image: str = None,
-    gpus: int = None,
-    apply_auto_mount: bool = False,
 ) -> mlrun.projects.MlrunProject:
     """
     Creating the project for the demo. This function is expected to call automatically when calling the function
     `mlrun.get_or_create_project`.
 
-    :param project:           The project to set up.
-    :param openai_key:
-    :param openai_base:
-    :param huggingface_token: A HuggingFace token
-    :param mysql_url:
-    :param source:
-    :param default_image:
-    :param gpus:
-    :param apply_auto_mount:
+    :param project: The project to set up.
 
     :returns: A fully prepared project for this demo.
     """
+    # Unpack secrets from environment variables:
+    openai_key = os.environ[ProjectSecrets.OPENAI_API_KEY]
+    openai_base = os.environ[ProjectSecrets.OPENAI_API_BASE]
+    huggingface_token = os.environ[ProjectSecrets.HUGGING_FACE_HUB_TOKEN]
+    mysql_url = os.environ[ProjectSecrets.MYSQL_URL]
+
+    # Unpack parameters:
+    source = project.get_param(key="source")
+    default_image = project.get_param(key="default_image")
+    gpus = project.get_param(key="gpus", default=0)
+
     # Set the project git source:
     if source:
         print(f"Project Source: {source}")
@@ -66,20 +63,14 @@ def setup(
     )
 
     # Set the functions:
-    _set_calls_generation_functions(
-        project=project, gpus=gpus, apply_auto_mount=apply_auto_mount
-    )
-    _set_calls_analysis_functions(
-        project=project,
-        gpus=gpus,
-        apply_auto_mount=apply_auto_mount,
-    )
+    _set_calls_generation_functions(project=project, gpus=gpus)
+    _set_calls_analysis_functions(project=project, gpus=gpus)
 
     # Set the workflows:
     _set_workflows(project=project)
 
     # Create the DB tables:
-    create_tables(project=project)
+    create_tables()
 
     # Save and return the project:
     project.save()
@@ -118,7 +109,7 @@ def _set_secrets(
     huggingface_token: str,
     mysql_url: str,
 ):
-    # Set the secrets in the project:
+    # Must have secrets:
     project.set_secrets(
         secrets={
             ProjectSecrets.OPENAI_API_KEY: openai_key,
@@ -134,14 +125,15 @@ def _set_function(
     func: str,
     name: str,
     kind: str,
-    gpus: int = None,
-    apply_auto_mount: bool = False,
+    gpus: int = 0,
 ):
     # Set the given function:
-    mlrun_function = project.set_function(func=func, name=name, kind=kind)
+    mlrun_function = project.set_function(
+        func=func, name=name, kind=kind, with_repo=True
+    )
 
     # Configure GPUs according to the given kind:
-    if gpus:
+    if gpus > 1:
         if kind == "mpijob":
             # 1 GPU for each rank:
             mlrun_function.with_limits(gpus=1)
@@ -150,24 +142,17 @@ def _set_function(
             # All GPUs for the single job:
             mlrun_function.with_limits(gpus=gpus)
 
-    # Apply auto-mount if needed:
-    if apply_auto_mount:
-        mlrun_function.apply(mlrun.auto_mount())
-
     # Save:
     mlrun_function.save()
 
 
-def _set_calls_generation_functions(
-    project: mlrun.projects.MlrunProject, gpus: int, apply_auto_mount: bool
-):
+def _set_calls_generation_functions(project: mlrun.projects.MlrunProject, gpus: int):
     # Conversation generator:
     _set_function(
         project=project,
         func="./src/calls_generation/conversations_generator.py",
         name="conversations-generator",
         kind="job",
-        apply_auto_mount=apply_auto_mount,
     )
 
     # Text to audio generator:
@@ -177,20 +162,16 @@ def _set_calls_generation_functions(
         name="text-to-audio-generator",
         kind="job",  # TODO: MPI once MLRun supports it out of the box
         gpus=gpus,
-        apply_auto_mount=apply_auto_mount,
     )
 
 
-def _set_calls_analysis_functions(
-    project: mlrun.projects.MlrunProject, gpus: int, apply_auto_mount: bool
-):
+def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: int):
     # DB management:
     _set_function(
         project=project,
         func="./src/calls_analysis/db_management.py",
         name="db-management",
         kind="job",
-        apply_auto_mount=apply_auto_mount,
     )
 
     # Speech diarization:
@@ -198,9 +179,8 @@ def _set_calls_analysis_functions(
         project=project,
         func="./src/hub_functions/speech_diarization.py",
         name="speech-diarization",
-        kind="mpijob" if gpus and gpus > 1 else "job",
+        kind="mpijob" if gpus > 1 else "job",
         gpus=gpus,
-        apply_auto_mount=apply_auto_mount,
     )
 
     # Transcription:
@@ -208,9 +188,8 @@ def _set_calls_analysis_functions(
         project=project,
         func="./src/hub_functions/transcribe.py",
         name="transcription",
-        kind="mpijob" if gpus and gpus > 1 else "job",
+        kind="mpijob" if gpus > 1 else "job",
         gpus=gpus,
-        apply_auto_mount=apply_auto_mount,
     )
 
     # Translation:
@@ -218,9 +197,8 @@ def _set_calls_analysis_functions(
         project=project,
         func="./src/hub_functions/translate.py",
         name="translation",
-        kind="mpijob" if gpus and gpus > 1 else "job",
+        kind="mpijob" if gpus > 1 else "job",
         gpus=gpus,
-        apply_auto_mount=apply_auto_mount,
     )
 
     # PII recognition:
@@ -229,7 +207,6 @@ def _set_calls_analysis_functions(
         func="./src/hub_functions/pii_recognizer.py",
         name="pii-recognition",
         kind="job",
-        apply_auto_mount=apply_auto_mount,
     )
 
     # Question answering:
@@ -239,7 +216,6 @@ def _set_calls_analysis_functions(
         name="question-answering",
         kind="job",
         gpus=gpus,
-        apply_auto_mount=apply_auto_mount,
     )
 
     # Postprocessing:
@@ -248,7 +224,6 @@ def _set_calls_analysis_functions(
         func="./src/calls_analysis/postprocessing.py",
         name="postprocessing",
         kind="job",
-        apply_auto_mount=apply_auto_mount,
     )
 
 

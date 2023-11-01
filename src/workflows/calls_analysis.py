@@ -120,7 +120,9 @@ def pipeline(
             "device": "cuda",
             "speakers_labels": ["Agent", "Client"],
             "separate_by_channels": speaker_per_channel,
-            "cur_dir": os.path.join(output_directory, "audio_files"),  # TODO: Delete once merged to mlrun/demos
+            "cur_dir": os.path.join(
+                output_directory, "audio_files"
+            ),  # TODO: Delete once merged to mlrun/demos
         },
         returns=["speech_diarization: file", "diarize_errors: file"],
     )
@@ -152,7 +154,9 @@ def pipeline(
             "device": "cuda",
             "output_directory": os.path.join(output_directory, "transcriptions"),
             "audio_duration": True,
-            "cur_dir": os.path.join(output_directory, "audio_files"),  # TODO: Delete once merged to mlrun/demos
+            "cur_dir": os.path.join(
+                output_directory, "audio_files"
+            ),  # TODO: Delete once merged to mlrun/demos
         },
         returns=[
             "transcriptions: path",
@@ -254,7 +258,9 @@ def pipeline(
     postprocess_answers_run = project.run_function(
         postprocessing_function,
         handler="postprocess_answers",
-        inputs={"answers": answer_questions_run.outputs["question_answering_dataframe"]},
+        inputs={
+            "answers": answer_questions_run.outputs["question_answering_dataframe"]
+        },
         returns=["processed_answers: dataset"],
     )
 

@@ -145,7 +145,7 @@ def diarize(
     minimum_speakers: int = None,
     maximum_speakers: int = None,
     verbose: bool = False,
-    cur_dir: str = None  # TODO: Delete once merged to mlrun/functions
+    cur_dir: str = None,  # TODO: Delete once merged to mlrun/functions
 ) -> Tuple[Dict[str, List[Tuple[float, float, str]]], Dict[str, str]]:
     """
     Perform speech diarization on given audio files using pyannote-audio (https://github.com/pyannote/pyannote-audio).

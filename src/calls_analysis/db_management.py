@@ -11,16 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import ast
 import datetime
-from typing import List, Optional, Tuple, Union
+import os
+from typing import List, Optional, Tuple
 
 import mlrun
 import pandas as pd
 from sqlalchemy import (  # ForeignKey,
     Boolean,
     Date,
-    Engine,
     Enum,
     Float,
     Integer,
@@ -157,14 +156,12 @@ class Call(Base):
     # agent: Mapped["Agent"] = relationship(back_populates="calls", lazy=True)
 
 
-def create_tables(project: mlrun.projects.MlrunProject):
+def create_tables():
     """
     Create the call center schema tables for when creating or loading the MLRun project.
-
-    :param project: The MLRun project with the MySQL secrets.
     """
     # Create an engine:
-    engine = _get_engine(context_or_project=project)
+    engine = create_engine(url=os.environ[ProjectSecrets.MYSQL_URL])
 
     # Create the schema's tables:
     Base.metadata.create_all(engine)
@@ -174,7 +171,7 @@ def insert_calls(
     context: mlrun.MLClientCtx, calls: pd.DataFrame
 ) -> Tuple[pd.DataFrame, List[str]]:
     # Create an engine:
-    engine = _get_engine(context_or_project=context)
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
 
     # Initialize a session maker:
     session = sessionmaker(engine)
@@ -207,7 +204,7 @@ def update_calls(
     :param data:
     """
     # Create an engine:
-    engine = _get_engine(context_or_project=context)
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
 
     # Initialize a session maker:
     session = sessionmaker(engine)
@@ -230,9 +227,9 @@ def update_calls(
         )
 
 
-def get_calls(project: mlrun.projects.MlrunProject) -> pd.DataFrame:
+def get_calls() -> pd.DataFrame:
     # Create an engine:
-    engine = _get_engine(context_or_project=project)
+    engine = create_engine(url=os.environ[ProjectSecrets.MYSQL_URL])
 
     # Initialize a session maker:
     session = sessionmaker(engine)
@@ -242,13 +239,3 @@ def get_calls(project: mlrun.projects.MlrunProject) -> pd.DataFrame:
         calls = pd.read_sql(select(Call), sess.connection())
 
     return calls
-
-
-def _get_engine(
-    context_or_project: Union[mlrun.MLClientCtx, mlrun.projects.MlrunProject]
-) -> Engine:
-    # Get the url and connection arguments:
-    url = context_or_project.get_secret(key=ProjectSecrets.MYSQL_URL)
-
-    # Create an engine:
-    return create_engine(url=url)
