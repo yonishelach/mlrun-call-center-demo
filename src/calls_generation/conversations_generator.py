@@ -33,6 +33,8 @@ def generate_conversations(
     context: mlrun.MLClientCtx,
     amount: int,
     output_directory: str,
+    agent_data: list,
+    client_data: list,
     model_name: str = "gpt-3.5-turbo",
     language: str = "en",
     min_time: int = 2,
@@ -42,8 +44,7 @@ def generate_conversations(
     from_time: str = "09:00",
     to_time: str = "17:00",
     # TODO: Remove for using a dedicated generation function in 'data_generator.py'.
-    n_agents: int = 4,
-    n_clients: int = 4,
+
 ) -> Tuple[str, pd.DataFrame, pd.DataFrame]:
     """
     Generates a list of conversations between an internet provider call center and a customer.
@@ -62,8 +63,6 @@ def generate_conversations(
     :param to_date:
     :param from_time:
     :param to_time:
-    :param n_agents:
-    :param n_clients:
 
     """
     # Get the minimum and maximum amount of words:
@@ -81,27 +80,42 @@ def generate_conversations(
         "yes": "",
         "no": "Don't",
     }
-
-    # Generate agents and clients:
-    # TODO: Remove once there are tables of agents and clients
-    clients = [_generate_id() for _ in range(n_clients)]
-    agents = [_generate_id() for _ in range(n_agents)]
+    
+    agent_upsales_options = {
+        "Doesn't try": "Doesn't try to upsale the customer on more services.",
+        "Tries and doesn't succeed": "Tries to upsale the customer on more services, and doesn't succeed",
+        "Tries and succeeds": "Tries to upsale the customer on more services, and succeeds",
+    }
+    
+    upsale_mapping = {
+        "Doesn't try": [False, False],
+        "Tries and doesn't succeed": [True, False],
+        "Tries and succeeds": [True, True],
+    }
 
     # Create the prompt structure:
     prompt_structure = (
-        "Generate a conversation between an internet provider call center agent (“Iguazio-Mckinsey Internet”) and "
-        "a client in {language}.\n"
+        "Generate a conversation between an internet provider call center agent named {agent_name} from (“Iguazio-Mckinsey Internet”) and "
+        "a client named {client_name} with email: {client_email} and phone number: {client_phone} in {language}.\n"
         "Format the conversation as follow:\n"
         "Agent: <text here>\n"
-        "Client: <text here>>\n"
+        "Client: <text here>\n"
         "The conversations has to include at least {min_words} words and no more than {max_words} words.\n"
+        "The call must include the following steps: \n"
+        "1. Opening (greeting and customer details validation and confirmation)\n"
+        "2. Presenting the problem by the customer"
+        "3. The agent {concern_addressed} address the client's concern.\n"
+        "4. The Agent {agent_upsales}"
+        "5. Summerizing and closing the call"
         "It has to be about a client who is calling to discuss about {topic}.\n"
-        "The agent {concern_addressed} address the client's concern.\n"
         "Do not add any descriptive tag and do not mark the end of the conversation with [End of conversation].\n"
         "Use ... for hesitation.\n"
         "The client needs to have a {client_tone} tone.\n"
         "The agent needs to have a {agent_tone}.\n"
-        "Remove from the final output any word inside parentheses of all types."
+        "Remove from the final output any word inside parentheses of all types. \n"
+        "use the following levels of these attributes while describing the agent's role: \n"
+        "Empathy {empathy}, Professionalism {professionalism}, Kindness {kindness}, \n"
+        "Effective Communication {effective_communication}, Active listening {active_listening}, Customization {customization}."
     )
 
     # Load the OpenAI model using langchain:
@@ -123,11 +137,24 @@ def generate_conversations(
         conversation_id = _generate_id()
         date = _get_random_date(min_date=min_date, max_date=max_date)
         time = _get_random_time(min_time=min_time, max_time=max_time)
+
         # Randomly select the conversation parameters:
         concern_addressed = random.choice(list(concern_addressed_options.keys()))
+        agent_upsales = random.choice(list(agent_upsales_options.keys()))
         client_tone = random.choice(TONES)
         agent_tone = random.choice(TONES)
         topic = random.choice(TOPICS)
+        agent = random.choice(agent_data)
+        client = random.choice(client_data)
+
+        # Generate levels os different agent attributes:
+        empathy = random.randint(1, 5)
+        professionalism = random.randint(1, 5)
+        kindness = random.randint(1, 5)
+        effective_communication = random.randint(1, 5)
+        active_listening = random.randint(1, 5)
+        customization = random.randint(1, 5)
+
         # Create the prompt:
         prompt = prompt_structure.format(
             language=language,
@@ -135,9 +162,21 @@ def generate_conversations(
             max_words=max_words,
             topic=topic,
             concern_addressed=concern_addressed_options[concern_addressed],
+            agent_upsales=agent_upsales_options[agent_upsales],
             client_tone=client_tone,
             agent_tone=agent_tone,
+            agent_name=f"{agent['first_name']} {agent['last_name']}",
+            client_name=f"{client['first_name']} {client['last_name']}",
+            client_email=client["email"],
+            client_phone=client["phone_number"],
+            empathy=empathy,
+            professionalism=professionalism,
+            kindness=kindness,
+            effective_communication=effective_communication,
+            active_listening=active_listening,
+            customization=customization,
         )
+
         # Generate the conversation:
         conversation = llm.predict(text=prompt)
         # Remove redundant newlines and spaces:
@@ -158,10 +197,11 @@ def generate_conversations(
             [
                 conversation_id,
                 conversation_text_path.name,
-                random.choice(clients),
-                random.choice(agents),
+                client['client_id'],
+                agent['agent_id'],
                 date,
                 time,
+
             ]
         )
         ground_truths.append(
@@ -170,33 +210,49 @@ def generate_conversations(
                 language,
                 topic,
                 concern_addressed,
+                upsale_mapping[agent_upsales][0],
+                upsale_mapping[agent_upsales][1],
                 client_tone,
                 agent_tone,
+                client['client_id'],
+                agent['agent_id'],
+                empathy,
+                professionalism,
+                kindness,
+                effective_communication,
+                active_listening,
+                customization,
             ]
         )
 
-    # Cast the conversations and ground truths into a dataframe:
-    conversations = pd.DataFrame(
-        conversations,
-        columns=["call_id", "text_file", "client_id", "agent_id", "date", "time"],
-    )
-    ground_truths = pd.DataFrame(
-        ground_truths,
-        columns=[
-            "call_id",
-            "language",
-            "topic",
-            "concern_addressed",
-            "client_tone",
-            "agent_tone",
-        ],
-    )
+        # Cast the conversations and ground truths into a dataframe:
+        conversations = pd.DataFrame(
+            conversations,
+            columns=["call_id", "text_file", "client_id", "agent_id", "date", "time"],
+        )
+        ground_truths = pd.DataFrame(
+            ground_truths,
+            columns=[
+                "call_id",
+                "language",
+                "topic",
+                "concern_addressed",
+                "agent_tries_upsale",
+                "agent_succeeds_upsale",
+                "client_tone",
+                "agent_tone",
+                "agent_id",
+                "client_id",
+                "empathy",
+                "professionalism",
+                "kindness",
+                "effective_communication",
+                "active_listening",
+                "customization",
+            ],
+        )
 
     return str(output_directory), conversations, ground_truths
-
-
-def _generate_id() -> str:
-    return hashlib.md5(str(datetime.datetime.now()).encode("utf-8")).hexdigest()
 
 
 def _get_random_time(
@@ -227,3 +283,6 @@ def create_batch_for_analysis(
     conversations_data.drop(columns="text_file", inplace=True)
     conversations_data.dropna(inplace=True)
     return conversations_data
+
+def _generate_id() -> str:
+    return hashlib.md5(str(datetime.datetime.now()).encode("utf-8")).hexdigest()

@@ -17,7 +17,8 @@ from typing import List, Optional, Tuple
 
 import mlrun
 import pandas as pd
-from sqlalchemy import (  # ForeignKey,
+from sqlalchemy import (  
+    ForeignKey,
     Boolean,
     Date,
     Enum,
@@ -31,7 +32,8 @@ from sqlalchemy import (  # ForeignKey,
     select,
     update,
 )
-from sqlalchemy.orm import (  # relationship,
+from sqlalchemy.orm import (  
+    relationship,
     Mapped,
     declarative_base,
     mapped_column,
@@ -47,33 +49,33 @@ Base = declarative_base()
 
 
 # TODO: client table
-# class Client(Base):
-#     __tablename__ = "client"
-#
-#     # Columns:
-#     client_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
-#     first_name: Mapped[str] = mapped_column(String(length=30))
-#     last_name: Mapped[str] = mapped_column(String(length=30))
-#     phone: Mapped[str] = mapped_column(String(length=20))
-#     email: Mapped[str] = mapped_column(String(length=50))
-#
-#     # Many-to-one relationship:
-#     calls: Mapped[List["Call"]] = relationship(back_populates="client", lazy=True)
+class Client(Base):
+    __tablename__ = "client"
+
+    # Columns:
+    client_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
+    first_name: Mapped[str] = mapped_column(String(length=30))
+    last_name: Mapped[str] = mapped_column(String(length=30))
+    phone: Mapped[str] = mapped_column(String(length=20))
+    email: Mapped[str] = mapped_column(String(length=50))
+
+    # Many-to-one relationship:
+    calls: Mapped[List["Call"]] = relationship(back_populates="client", lazy=True)
 
 
 # TODO: agent table
-# class Agent(Base):
-#     __tablename__ = "agent"
-#
-#     # Columns:
-#     agent_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
-#     first_name: Mapped[str] = mapped_column(String(length=30))
-#     last_name: Mapped[str] = mapped_column(String(length=30))
-#     phone: Mapped[str] = mapped_column(String(length=20))
-#     email: Mapped[str] = mapped_column(String(length=50))
-#
-#     # Many-to-one relationship:
-#     calls: Mapped[List["Call"]] = relationship(back_populates="agent", lazy=True)
+class Agent(Base):
+    __tablename__ = "agent"
+
+    # Columns:
+    agent_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
+    first_name: Mapped[str] = mapped_column(String(length=30))
+    last_name: Mapped[str] = mapped_column(String(length=30))
+    # phone: Mapped[str] = mapped_column(String(length=20))
+    # email: Mapped[str] = mapped_column(String(length=50))
+
+    # Many-to-one relationship:
+    calls: Mapped[List["Call"]] = relationship(back_populates="agent", lazy=True)
 
 
 class Call(Base):
@@ -82,10 +84,10 @@ class Call(Base):
     # Metadata:
     call_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
     client_id: Mapped[str] = mapped_column(
-        String(length=ID_LENGTH),  # TODO: ForeignKey("client.id")
+        String(length=ID_LENGTH), ForeignKey("client.client_id")
     )
     agent_id: Mapped[str] = mapped_column(
-        String(length=ID_LENGTH),  # TODO: ForeignKey("agent.id")
+        String(length=ID_LENGTH), ForeignKey("agent.agent_id")
     )
     date: Mapped[datetime.date] = mapped_column(Date())
     time: Mapped[datetime.time] = mapped_column(Time())
@@ -152,8 +154,8 @@ class Call(Base):
     )
 
     # TODO: One-to-many relationships:
-    # client: Mapped["Client"] = relationship(back_populates="calls", lazy=True)
-    # agent: Mapped["Agent"] = relationship(back_populates="calls", lazy=True)
+    client: Mapped["Client"] = relationship(back_populates="calls", lazy=True)
+    agent: Mapped["Agent"] = relationship(back_populates="calls", lazy=True)
 
 
 def create_tables():
@@ -239,3 +241,55 @@ def get_calls() -> pd.DataFrame:
         calls = pd.read_sql(select(Call), sess.connection())
 
     return calls
+
+
+def insert_agents(context: mlrun.MLClientCtx, agents: list) :
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Insert the new agents into the table and commit:
+    with session.begin() as sess:
+        sess.execute(insert(Agent), agents)
+
+
+def insert_clients(context: mlrun.MLClientCtx, clients: list):
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Insert the new clients into the table and commit:
+    with session.begin() as sess:
+        sess.execute(insert(Client), clients)
+
+
+def get_agents(context: mlrun.MLClientCtx) -> list:
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Select all agents:
+    with session.begin() as sess:
+        agents = pd.read_sql(select(Agent), sess.connection())
+        agents = ast.literal_eval(agents) 
+    return agents
+
+
+def get_clients(context: mlrun.MLClientCtx) -> list:
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Select all clients:
+    with session.begin() as sess:
+        clients = pd.read_sql(select(Client), sess.connection())
+        clients = ast.literal_eval(clients)
+    return clients
