@@ -15,6 +15,7 @@ import os
 from typing import List
 
 import kfp
+from kfp import dsl
 import mlrun
 
 output_directory = os.path.abspath("./outputs")
@@ -33,10 +34,99 @@ def pipeline(
     to_date: str,
     from_time: str,
     to_time: str,
+    num_clients: int,
+    num_agents: int,
+    generate_clients_and_agents: bool = True,
+    
 ):
     # Get the project:
     project = mlrun.get_current_project()
+    
+    with dsl.Condition(generate_clients_and_agents == True) as generate_data_condition:
+        
+        # Generate client data:
+        client_data_generator_function = project.get_function("json-data-generator")
+        client_data_generator_function.apply(mlrun.auto_mount())
+        client_data_run = project.run_function(
+            client_data_generator_function,
+            handler="generate_data",
+            params={
+                "amount": num_clients,
+                "model_name": generation_model,
+                "language": language,
+                "fields": ["first name", "last_name", "phone_number", "email", "client_id"],
+            },
+            returns=[
+                "clients: file",
+            ],
+        )
+        
 
+        # Insert client data to database
+        db_management_function = project.get_function("db-management")
+        # db_management_function.apply(mlrun.auto_mount())
+        project.run_function(
+            db_management_function,
+            handler="insert_clients",
+            inputs={
+                "clients": client_data_run.outputs["clients"],
+            },
+        )
+
+
+        # Generate agent data:
+        agent_data_generator_function = project.get_function("json-data-generator")
+        agent_data_generator_function.apply(mlrun.auto_mount())
+        agent_data_run = project.run_function(
+            agent_data_generator_function,
+            handler="generate_data",
+            params={
+                "amount": num_agents,
+                "model_name": generation_model,
+                "language": language,
+                "fields": ["first_name", "last_name", "agent_id"],
+            },
+            returns=[
+                "agents: file",
+            ],
+        )
+        
+        
+        # Insert agent data to database
+        db_management_function = project.get_function("db-management")
+        # db_management_function.apply(mlrun.auto_mount())
+        project.run_function(
+            db_management_function,
+            handler="insert_agents",
+            inputs={
+                "agents": agent_data_run.outputs["agents"],
+            },
+        )
+
+    
+    # Get agents from database
+    db_management_function = project.get_function("db-management")
+    # db_management_function.apply(mlrun.auto_mount())
+    get_agents_run = project.run_function(
+        db_management_function,
+        handler="get_agents",
+        returns=[
+            "agents: file" 
+        ],
+    ).after(generate_data_condition)
+    
+    
+    # Get clients from database
+    db_management_function = project.get_function("db-management")
+    # db_management_function.apply(mlrun.auto_mount())
+    get_clients_run = project.run_function(
+        db_management_function,
+        handler="get_clients",
+        returns=[
+            "clients: file" 
+        ],
+    ).after(generate_data_condition)
+    
     # Generate conversations texts:
     conversations_generator_function = project.get_function("conversations-generator")
     conversations_generator_function.apply(mlrun.auto_mount())
@@ -56,6 +146,11 @@ def pipeline(
             "to_date": to_date,
             "from_time": from_time,
             "to_time": to_time,
+
+        },
+        inputs={
+            "agent_data": get_agents_run.outputs['agents'],
+            "client_data": get_clients_run.outputs['clients'],
         },
         returns=[
             "conversations: path",
