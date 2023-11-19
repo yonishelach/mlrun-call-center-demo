@@ -60,7 +60,7 @@ class Client(Base):
     email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
-    calls: Mapped[List["Call"]] = relationship(back_populates="client.client_id", lazy=True)
+    calls: Mapped[List["Call"]] = relationship(back_populates="client", lazy=True)
 
 
 # TODO: agent table
@@ -75,7 +75,7 @@ class Agent(Base):
     # email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
-    calls: Mapped[List["Call"]] = relationship(back_populates="agent.agent_id", lazy=True)
+    calls: Mapped[List["Call"]] = relationship(back_populates="agent", lazy=True)
 
 
 class Call(Base):
@@ -169,32 +169,6 @@ def create_tables():
     Base.metadata.create_all(engine)
 
 
-def insert_clients(context: mlrun.MLClientCtx, clients: list):
-    # Create an engine:
-    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
-
-    # Initialize a session maker:
-    session = sessionmaker(engine)
-
-    # Insert the new calls into the table and commit:
-    with session.begin() as sess:
-        sess.execute(insert(Client), clients)
-
-        
-def insert_agents(context: mlrun.MLClientCtx, agents: list):
-    # Create an engine:
-    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
-
-    # Initialize a session maker:
-    session = sessionmaker(engine)
-
-    # Insert the new calls into the table and commit:
-    with session.begin() as sess:
-        sess.execute(insert(Agent), agents)
-
-
-
-
 def insert_calls(
     context: mlrun.MLClientCtx, calls: pd.DataFrame
 ) -> Tuple[pd.DataFrame, List[str]]:
@@ -276,7 +250,7 @@ def insert_agents(context: mlrun.MLClientCtx, agents: list) :
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Insert the new calls into the table and commit:
+    # Insert the new agents into the table and commit:
     with session.begin() as sess:
         sess.execute(insert(Agent), agents)
 
@@ -288,7 +262,7 @@ def insert_clients(context: mlrun.MLClientCtx, clients: list):
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Insert the new calls into the table and commit:
+    # Insert the new clients into the table and commit:
     with session.begin() as sess:
         sess.execute(insert(Client), clients)
 
@@ -300,7 +274,7 @@ def get_agents(context: mlrun.MLClientCtx) -> list:
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Select all calls:
+    # Select all agents:
     with session.begin() as sess:
         agents = pd.read_sql(select(Agent), sess.connection())
         agents = ast.literal_eval(agents) 
@@ -314,7 +288,7 @@ def get_clients(context: mlrun.MLClientCtx) -> list:
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Select all calls:
+    # Select all clients:
     with session.begin() as sess:
         clients = pd.read_sql(select(Client), sess.connection())
         clients = ast.literal_eval(clients)
