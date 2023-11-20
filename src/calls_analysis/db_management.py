@@ -60,7 +60,7 @@ class Client(Base):
     email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
-    calls: Mapped[List["Call"]] = relationship(back_populates="client.client_id", lazy=True)
+    calls: Mapped[List["Call"]] = relationship(back_populates="client", lazy=True)
 
 
 # TODO: agent table
@@ -75,7 +75,7 @@ class Agent(Base):
     # email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
-    calls: Mapped[List["Call"]] = relationship(back_populates="agent.agent_id", lazy=True)
+    calls: Mapped[List["Call"]] = relationship(back_populates="agent", lazy=True)
 
 
 class Call(Base):
