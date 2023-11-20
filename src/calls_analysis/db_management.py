@@ -14,10 +14,10 @@
 import datetime
 import os
 from typing import List, Optional, Tuple
-import ast
+
 import mlrun
 import pandas as pd
-from sqlalchemy import (  
+from sqlalchemy import (
     ForeignKey,
     Boolean,
     Date,
@@ -32,7 +32,7 @@ from sqlalchemy import (
     select,
     update,
 )
-from sqlalchemy.orm import (  
+from sqlalchemy.orm import (
     relationship,
     Mapped,
     declarative_base,
@@ -60,7 +60,7 @@ class Client(Base):
     email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
-    calls: Mapped[List["Call"]] = relationship(back_populates="client", lazy=True)
+    calls: Mapped[List["Call"]] = relationship(back_populates="client.client_id", lazy=True)
 
 
 # TODO: agent table
@@ -75,7 +75,7 @@ class Agent(Base):
     # email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
-    calls: Mapped[List["Call"]] = relationship(back_populates="agent", lazy=True)
+    calls: Mapped[List["Call"]] = relationship(back_populates="agent.agent_id", lazy=True)
 
 
 class Call(Base):
@@ -169,8 +169,32 @@ def create_tables():
     Base.metadata.create_all(engine)
 
 
+def insert_clients(context: mlrun.MLClientCtx, clients: list):
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Insert the new calls into the table and commit:
+    with session.begin() as sess:
+        sess.execute(insert(Client), clients)
+
+
+def insert_agents(context: mlrun.MLClientCtx, agents: list):
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Insert the new calls into the table and commit:
+    with session.begin() as sess:
+        sess.execute(insert(Agent), agents)
+
+
 def insert_calls(
-    context: mlrun.MLClientCtx, calls: pd.DataFrame
+        context: mlrun.MLClientCtx, calls: pd.DataFrame
 ) -> Tuple[pd.DataFrame, List[str]]:
     # Create an engine:
     engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
@@ -191,11 +215,11 @@ def insert_calls(
 
 
 def update_calls(
-    context: mlrun.MLClientCtx,
-    status: str,
-    table_key: str,
-    data_key: str,
-    data: pd.DataFrame,
+        context: mlrun.MLClientCtx,
+        status: str,
+        table_key: str,
+        data_key: str,
+        data: pd.DataFrame,
 ):
     """
 
@@ -243,14 +267,14 @@ def get_calls() -> pd.DataFrame:
     return calls
 
 
-def insert_agents(context: mlrun.MLClientCtx, agents: list) :
+def insert_agents(context: mlrun.MLClientCtx, agents: list):
     # Create an engine:
     engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
 
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Insert the new agents into the table and commit:
+    # Insert the new calls into the table and commit:
     with session.begin() as sess:
         sess.execute(insert(Agent), agents)
 
@@ -262,7 +286,7 @@ def insert_clients(context: mlrun.MLClientCtx, clients: list):
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Insert the new clients into the table and commit:
+    # Insert the new calls into the table and commit:
     with session.begin() as sess:
         sess.execute(insert(Client), clients)
 
@@ -274,10 +298,9 @@ def get_agents(context: mlrun.MLClientCtx) -> list:
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Select all agents:
+    # Select all calls:
     with session.begin() as sess:
         agents = pd.read_sql(select(Agent), sess.connection())
-        agents = ast.literal_eval(agents) 
     return agents
 
 
@@ -288,8 +311,7 @@ def get_clients(context: mlrun.MLClientCtx) -> list:
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Select all clients:
+    # Select all calls:
     with session.begin() as sess:
         clients = pd.read_sql(select(Client), sess.connection())
-        clients = ast.literal_eval(clients)
     return clients
