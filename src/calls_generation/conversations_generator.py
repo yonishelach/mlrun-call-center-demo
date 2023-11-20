@@ -30,20 +30,20 @@ WORDS_IN_1_MINUTE = 240
 
 
 def generate_conversations(
-    context: mlrun.MLClientCtx,
-    amount: int,
-    output_directory: str,
-    agent_data: list,
-    client_data: list,
-    model_name: str = "gpt-3.5-turbo",
-    language: str = "en",
-    min_time: int = 2,
-    max_time: int = 5,
-    from_date: str = "01.01.2023",
-    to_date: str = "01.03.2023",
-    from_time: str = "09:00",
-    to_time: str = "17:00",
-    # TODO: Remove for using a dedicated generation function in 'data_generator.py'.
+        context: mlrun.MLClientCtx,
+        amount: int,
+        output_directory: str,
+        agent_data: pd.DataFrame,
+        client_data: pd.DataFrame,
+        model_name: str = "gpt-3.5-turbo",
+        language: str = "en",
+        min_time: int = 2,
+        max_time: int = 5,
+        from_date: str = "01.01.2023",
+        to_date: str = "01.03.2023",
+        from_time: str = "09:00",
+        to_time: str = "17:00",
+        # TODO: Remove for using a dedicated generation function in 'data_generator.py'.
 
 ) -> Tuple[str, pd.DataFrame, pd.DataFrame]:
     """
@@ -80,13 +80,13 @@ def generate_conversations(
         "yes": "",
         "no": "Don't",
     }
-    
+
     agent_upsales_options = {
         "Doesn't try": "Doesn't try to upsale the customer on more services.",
         "Tries and doesn't succeed": "Tries to upsale the customer on more services, and doesn't succeed",
         "Tries and succeeds": "Tries to upsale the customer on more services, and succeeds",
     }
-    
+
     upsale_mapping = {
         "Doesn't try": [False, False],
         "Tries and doesn't succeed": [True, False],
@@ -144,8 +144,8 @@ def generate_conversations(
         client_tone = random.choice(TONES)
         agent_tone = random.choice(TONES)
         topic = random.choice(TOPICS)
-        agent = random.choice(agent_data)
-        client = random.choice(client_data)
+        agent = agent_data.sample().to_dict(orient="records")[0]
+        client = client_data.sample().to_dict(orient="records")[0]
 
         # Generate levels os different agent attributes:
         empathy = random.randint(1, 5)
@@ -256,15 +256,15 @@ def generate_conversations(
 
 
 def _get_random_time(
-    min_time: datetime.datetime, max_time: datetime.datetime
+        min_time: datetime.datetime, max_time: datetime.datetime
 ) -> datetime.time:
     if max_time.hour <= min_time.hour:
         max_time += datetime.timedelta(days=1)
     return (
-        min_time
-        + datetime.timedelta(
-            seconds=random.randint(0, int((max_time - min_time).total_seconds())),
-        )
+            min_time
+            + datetime.timedelta(
+        seconds=random.randint(0, int((max_time - min_time).total_seconds())),
+    )
     ).time()
 
 
@@ -275,7 +275,7 @@ def _get_random_date(min_date, max_date) -> datetime.date:
 
 
 def create_batch_for_analysis(
-    conversations_data: pd.DataFrame, audio_files: pd.DataFrame
+        conversations_data: pd.DataFrame, audio_files: pd.DataFrame
 ) -> pd.DataFrame:
     conversations_data = conversations_data.join(
         other=audio_files.set_index(keys="text_file"), on="text_file"
@@ -283,6 +283,7 @@ def create_batch_for_analysis(
     conversations_data.drop(columns="text_file", inplace=True)
     conversations_data.dropna(inplace=True)
     return conversations_data
+
 
 def _generate_id() -> str:
     return hashlib.md5(str(datetime.datetime.now()).encode("utf-8")).hexdigest()
