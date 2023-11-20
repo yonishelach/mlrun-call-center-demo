@@ -56,7 +56,7 @@ class Client(Base):
     client_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
     first_name: Mapped[str] = mapped_column(String(length=30))
     last_name: Mapped[str] = mapped_column(String(length=30))
-    phone: Mapped[str] = mapped_column(String(length=20))
+    phone_number: Mapped[str] = mapped_column(String(length=20))
     email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
