@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import mlrun
-import pandas as pd
-import pathlib
 import os
 import tqdm
 from langchain.chat_models import ChatOpenAI
-from typing import Tuple
 import ast
+from src.common import ProjectSecrets
 
 
 def generate_data(
