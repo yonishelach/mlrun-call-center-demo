@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import mlrun
+import pandas as pd
+import pathlib
 import os
 import tqdm
 from langchain.chat_models import ChatOpenAI
+from typing import Tuple
 import ast
 from src.common import ProjectSecrets
 
@@ -46,7 +49,8 @@ def generate_data(
     prompt_structure = (
         "generate the following values {amount} times randomly in an order that creates a json table using the following fields: {fields}.\n"
         "please generate the values in {language} language. \n"
-        "make sure the names of the keys are the same as the given field name."
+        "make sure the names of the keys are the same as the given field name.\n"
+        "please return only the json format without any introduction and ending"
     )
 
     # Load the OpenAI model using langchain:
