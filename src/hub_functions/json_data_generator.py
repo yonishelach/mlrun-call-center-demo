@@ -42,16 +42,24 @@ def generate_data(
     :param language: The language to use for the generated conversation text.
     :param chunk_size: Number of samples generated at each GPT query.
     """
-
-    fields = [field.replace(" ", "_") for field in fields]
+    instructions = ""
+    for field in fields:
+        if ":" in field:
+            key, instruction = field.split(":", 1)
+        else:
+            key, instruction = field, "no special instruction"
+        key = key.replace(" ", "_")
+        instructions += f"* {key}: {instruction}\n"
 
     # Create the prompt structure:
     prompt_structure = (
-        "generate the following values {amount} times randomly in an order that creates a json table using the following fields: {fields}.\n"
-        "please generate the values in {language} language. \n"
-        "make sure the names of the keys are the same as the given field name.\n"
-        "please return only the json format without any introduction and ending"
+        f"Use the following keys and instructions (example: 'key: instruction or no special instruction'): {instructions}.\n"
+        f"Please generate the values in {language} language. \n"
+        f"Make sure the names of the keys are the same as the given field name.\n"
+        f"Please return only the json format without any introduction and ending"
     )
+
+    prompt_structure = "generate the following values {amount} times randomly, in an order that creates a json table.\n" + prompt_structure
 
     # Load the OpenAI model using langchain:
     os.environ["OPENAI_API_KEY"] = context.get_secret(key=ProjectSecrets.OPENAI_API_KEY)
@@ -73,8 +81,6 @@ def generate_data(
             # Create the prompt:
             prompt = prompt_structure.format(
                 amount=current_chunk_size,
-                fields=fields,
-                language=language
             )
             # Generate the conversation:
             chunk_data = llm.predict(text=prompt)
@@ -89,3 +95,4 @@ def generate_data(
             raise ValueError(
                 f"Could not generate a proper json format for the given fields, using given model: {model_name}. Hint: Gpt-4 works for our purpose.")
     return data
+

@@ -77,8 +77,8 @@ def generate_conversations(
 
     # Create the concern addressed options:
     concern_addressed_options = {
-        "yes": "",
-        "no": "Don't",
+        True: "",
+        False: "Don't",
     }
 
     agent_upsales_options = {
