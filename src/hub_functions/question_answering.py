@@ -220,6 +220,7 @@ def answer_questions(
     # Create a list of prompt according to given parts and questions
     prompt_template = []
     questions = questions if isinstance(questions[0], list) else [questions]
+    # Build all prompts
     for i in range(number_of_question_steps):
         prompt_template.append(_get_prompt_template(
             text_wrapper=text_wrapper[i],
@@ -286,12 +287,14 @@ def answer_questions(
     ):
         try:
             total_answers = []
+            # Go over all questions in least per document/ batch of documents
             for step in range(number_of_question_steps):
                 current_questions_amount = len(questions[step])
                 # Read batch (read the text from the text files):
                 batched_input = _read_file_batch(
                     file_batch=file_batch, prompt_template=prompt_template[step]
                 )
+                # Regular question answering
                 if questions_config[step] == {} or questions_config[step]["type"] == "default":
                     # Infer batch:
                     batched_answers = _answer_questions(
@@ -301,6 +304,7 @@ def answer_questions(
                         generation_config=generation_configs[step],
                     )
                     batched_answers = batched_answers[0]
+                # Ask a number of models to "vote" on the correct answer
                 elif questions_config[step]["type"] == "poll":
                     votes = []
                     number_voters = (questions_config[step]["poll_count"] or 5)
@@ -313,6 +317,7 @@ def answer_questions(
                         )
                         votes += batched_answers
                     batched_answers = []
+                    # Average strategy works for numeric values only
                     if questions_config[step]["poll_strategy"] == "average":
                         for question in current_questions_amount:
                             # create a least of all answers to relevant question
@@ -345,6 +350,7 @@ def answer_questions(
         "text_file",
         *questions_columns,
     ]
+    # Create a data frame of answers by files
     successes = pd.DataFrame(
         successes,
         columns=columns,
@@ -453,6 +459,7 @@ def _read_file_batch(
         prompt_template: str,
 ) -> List[str]:
     batch = []
+    # Go over all files and read in usable format
     for file in file_batch:
         with open(file, "r", encoding='utf-8') as fp:
             batch.append(prompt_template.format(fp.read()))
@@ -461,6 +468,7 @@ def _read_file_batch(
 
 def _get_answers(generated_text: str, questions_amount: int) -> List[str]:
     # Clear answer start (part before numbers):
+    # TODO find better way to verify, for list of questions this is redundant for example
     if "1." not in generated_text:
         raise ValueError(
             f"Answer 1. is missing from the generated text: '{generated_text}'"
@@ -494,7 +502,6 @@ def _answer_questions(
         generation_config: transformers.GenerationConfig,
 ) -> List[List[str]]:
     # Infer through the llm:
-
     batched_output = generation_pipeline(
         batched_input,
         generation_config=generation_config,
@@ -516,8 +523,11 @@ def _answer_questions(
 
 
 def _list_me(list_to_check: list, name: str, length: int):
+    # Check if is list, turn to list if not
     list_to_check = list_to_check if isinstance(list_to_check, list) else [list_to_check]
     list_len = len(list_to_check)
+    # if not a list, or is a list of len 1 we duplicate for correct length
+    # if list in wrong length throw an error 
     if list_len != length:
         if list_len == 1:
             return list_to_check * length
@@ -534,32 +544,14 @@ def _most_common_answer(answers):
     return most_common[0][0]
 
 
-def _average_answer(answers, mapping=None):
+def _average_answer(answers):
     if isinstance(answers[0], str):
-        if mapping:
-            numeric_values = [_map_to_int(answer, mapping) for answer in answers]
-        else:
-            raise ValueError(
-                "Cannot perform poll with average answer strategy of non numeric values without a mapping,"
-                " please provide a mapping of string values to integers or choose 'most_common' as strategy."
-            )
+        raise ValueError(
+            "Cannot perform poll with average answer strategy of non numeric values,"
+            " please change the question to give numeric data, or choose 'most_common' as strategy."
+        )
     else:
         numeric_values = answers
     avg = sum(numeric_values) / len(numeric_values)
     # Round to the closest integer and return corresponding value
-    return _map_to_str(round(avg), mapping)
-
-
-def _map_to_int(answer, mapping):
-    try:
-        # Try to convert the answer to an integer
-        return int(answer)
-    except ValueError:
-        # If conversion fails, use the provided mapping
-        return mapping.get(answer, 0)
-
-
-def _map_to_str(answer, mapping):
-    if not mapping:
-        return answer
-    return next(key for key, value in mapping.items() if value == answer)
+    return round(avg)
