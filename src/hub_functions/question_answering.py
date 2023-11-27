@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Tuple, Union
 import pandas as pd
 import transformers
 from tqdm import tqdm
+from collections import Counter
 
 # Get the global logger:
 _LOGGER = logging.getLogger()
@@ -126,20 +127,22 @@ def open_mpi_handler(
 
 @open_mpi_handler(worker_inputs=["data_path"], root_worker_inputs={"verbose": True})
 def answer_questions(
-    data_path: Union[str, List[str]],
-    model_name: str,
-    questions: List[str],
-    device_map: Union[str, dict] = None,
-    model_kwargs: dict = None,
-    auto_gptq_exllama_max_input_length: int = None,
-    tokenizer_name: str = None,
-    tokenizer_kwargs: dict = None,
-    text_wrapper: str = "",
-    questions_wrapper: str = "",
-    generation_config: dict = None,
-    batch_size: int = 1,
-    questions_columns: List[str] = None,
-    verbose: bool = False,
+        data_path: Union[str, List[str]],
+        model_name: str,
+        questions: Union[List[str], List[List[str]]],
+        device_map: Union[str, dict] = None,
+        model_kwargs: dict = None,
+        auto_gptq_exllama_max_input_length: int = None,
+        tokenizer_name: str = None,
+        tokenizer_kwargs: dict = None,
+        text_wrapper: Union[str, List[str]] = "",
+        questions_wrapper: Union[str, List[str]] = "",
+        generation_config: Union[Dict, List[Dict]] = {},
+        questions_config: Union[Dict, List[Dict]] = {},
+        batch_size: int = 1,
+        questions_columns: List[str] = None,
+        verbose: bool = False,
+        mapping: Union[List[Dict], List[List[Dict]]] = None,
 ) -> Tuple[pd.DataFrame, dict]:
     """
     Answer questions with a context to the given text files contents by a pretrained LLM model. Each text file will have
@@ -176,9 +179,15 @@ def answer_questions(
                                                questions.
     :param generation_config:                  HuggingFace's `GenerationConfig` keyword arguments to pass to the
                                                `generate` method.
+    :param questions_config:                   A dictionary or list of dictionaries containing specific ways to answer
+                                               questions (using a poll for example).
     :param batch_size:                         Batch size for inference.
     :param questions_columns:                  Columns to use for the dataframe returned.
     :param verbose:                            Whether to present logs of a progress bar and errors. Default: True.
+    :param mapping:                            A list of dictionaries mapping string values to numeric values to use
+                                               when averaging answers. if more than one questioning type isn't normal,
+                                               it is expected to be a list of lists as long as the number of different
+                                               question steps given to this function.
 
 
     :returns: A tuple of:
@@ -202,28 +211,43 @@ def answer_questions(
     # Get the prompt template:
     if verbose:
         _LOGGER.info("Creating prompt template.")
-    prompt_template = _get_prompt_template(
-        text_wrapper=text_wrapper,
-        questions_wrapper=questions_wrapper,
-        questions=questions,
-    )
+    # Organize questions as a list of list, and count number of sub-lists for future use
+    number_of_question_steps = 1 if isinstance(questions[0], str) else len(questions)
+    questions = _list_me(questions, "questions", number_of_question_steps)
+    # Organize prompt parts at proper length
+    text_wrapper = _list_me(text_wrapper, "text_wrapper", number_of_question_steps)
+    questions_wrapper = _list_me(questions_wrapper, "questions_wrapper", number_of_question_steps)
+    # Create a list of prompt according to given parts and questions
+    prompt_template = []
+    questions = questions if isinstance(questions[0], list) else [questions]
+    for i in range(number_of_question_steps):
+        prompt_template.append(_get_prompt_template(
+            text_wrapper=text_wrapper[i],
+            questions_wrapper=questions_wrapper[i],
+            questions=questions[i],
+        ))
     if verbose:
         _LOGGER.info(f"Prompt template created:\n\n{prompt_template}\n")
 
+    questions_amount = sum([len(sublist) for sublist in questions])
     # Get the questions columns:
     questions_columns = questions_columns or [
-        f"q{i}" for i in range(1, len(questions) + 1)
+        f"q{i}" for i in range(1, questions_amount + 1)
     ]
-    if len(questions_columns) != len(questions):
+    if len(questions_columns) != questions_amount:
         raise ValueError(
             f"The provided questions columns length ({len(questions_columns)}) "
-            f"does not match the questions amount ({len(questions)})"
+            f"does not match the questions amount ({questions_amount})"
         )
 
     # Load the generation config:
     if verbose:
         _LOGGER.info("Loading generation configuration.")
-    generation_config = transformers.GenerationConfig(**(generation_config or {}))
+    generation_config = _list_me(generation_config, "generation_config", number_of_question_steps)
+    generation_configs = []
+    # load a list of all appropriate configs 
+    for cfg in generation_config:
+        generation_configs.append(transformers.GenerationConfig(**(cfg or {})))
     if verbose:
         _LOGGER.info(f"Generation configuration loaded: {generation_config}")
 
@@ -245,39 +269,66 @@ def answer_questions(
     # Prepare the successes dataframe and errors dictionary to be returned:
     successes = []
     errors = {}
-
     # Split the files into batches:
     file_batches = [
-        text_files[i : i + batch_size]
+        text_files[i: i + batch_size]
         if i + batch_size < len(text_files)
         else text_files[i:]
         for i in range(0, len(text_files), batch_size)
     ]
-
+    questions_config = _list_me(questions_config, "questions_config", number_of_question_steps)
     # Go over the batches of text files and question them:
-    questions_amount = len(questions_columns)
     for file_batch in tqdm(
-        file_batches,
-        desc="Generating answers",
-        unit=f"file (batch of {batch_size})",
-        disable=not verbose,
+            file_batches,
+            desc="Generating answers",
+            unit=f"file (batch of {batch_size})",
+            disable=not verbose,
     ):
         try:
-            # Read batch (read the text from the text files):
-            batched_input = _read_file_batch(
-                file_batch=file_batch, prompt_template=prompt_template
-            )
-            # Infer batch:
-            batched_answers = _answer_questions(
-                questions_amount=questions_amount,
-                batched_input=batched_input,
-                generation_pipeline=generation_pipeline,
-                generation_config=generation_config,
-            )
+            total_answers = []
+            for step in range(number_of_question_steps):
+                current_questions_amount = len(questions[step])
+                # Read batch (read the text from the text files):
+                batched_input = _read_file_batch(
+                    file_batch=file_batch, prompt_template=prompt_template[step]
+                )
+                if questions_config[step] == {} or questions_config[step]["type"] == "default":
+                    # Infer batch:
+                    batched_answers = _answer_questions(
+                        questions_amount=current_questions_amount,
+                        batched_input=batched_input,
+                        generation_pipeline=generation_pipeline,
+                        generation_config=generation_configs[step],
+                    )
+                    batched_answers = batched_answers[0]
+                elif questions_config[step]["type"] == "poll":
+                    votes = []
+                    number_voters = (questions_config[step]["poll_count"] or 5)
+                    for k in range(number_voters):
+                        batched_answers = _answer_questions(
+                            questions_amount=current_questions_amount,
+                            batched_input=batched_input,
+                            generation_pipeline=generation_pipeline,
+                            generation_config=generation_configs[step],
+                        )
+                        votes += batched_answers
+                    batched_answers = []
+                    if questions_config[step]["poll_strategy"] == "average":
+                        for question in current_questions_amount:
+                            # create a least of all answers to relevant question
+                            answer = [votes[voter][question] for voter in number_voters]
+                            # check if mapping just for this question step or for overs
+                            current_mapping = mapping if isinstance(mapping[0], dict) else mapping[i]
+                            batched_answers.append(_average_answer(answer, mapping=current_mapping[question]))
+                    elif questions_config[step]["poll_strategy"] == "most_common":
+                        for question in range(current_questions_amount):
+                            answer = [votes[voter][question] for voter in range(number_voters)]
+                            batched_answers.append(_most_common_answer(answer))
+                total_answers += batched_answers
             # Collect it to the successes:
             successes += [
                 [file.name, *answers]
-                for file, answers in zip(file_batch, batched_answers)
+                for file, answers in zip(file_batch, [total_answers])
             ]
         except Exception as exception:
             # Note the exception as error in the dictionary:
@@ -310,7 +361,7 @@ def answer_questions(
 
 
 def _get_text_files(
-    data_path: pathlib.Path,
+        data_path: pathlib.Path,
 ) -> List[pathlib.Path]:
     # Check if the path is of a directory or a file:
     if data_path.is_dir():
@@ -328,9 +379,9 @@ def _get_text_files(
 
 
 def _get_prompt_template(
-    text_wrapper: str,
-    questions_wrapper: str,
-    questions: List[str],
+        text_wrapper: str,
+        questions_wrapper: str,
+        questions: List[str],
 ) -> str:
     # Validate and build the text wrapper:
     text_wrapper = text_wrapper or (
@@ -360,13 +411,13 @@ def _get_prompt_template(
 
 
 def _get_generation_pipeline(
-    model_name: str,
-    device_map: Union[str, dict],
-    tokenizer_name: str,
-    model_kwargs: dict,
-    tokenizer_kwargs: dict,
-    auto_gptq_exllama_max_input_length: int = None,
-    batch_size: int = 1,
+        model_name: str,
+        device_map: Union[str, dict],
+        tokenizer_name: str,
+        model_kwargs: dict,
+        tokenizer_kwargs: dict,
+        auto_gptq_exllama_max_input_length: int = None,
+        batch_size: int = 1,
 ):
     # Load the model:
     model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -387,21 +438,23 @@ def _get_generation_pipeline(
     )
 
     # Initialize a generation pipline and return:
-    return transformers.pipeline(
+    pipe = transformers.pipeline(
         task="text-generation",
         model=model,
         tokenizer=tokenizer,
         batch_size=batch_size,
     )
+    pipe.tokenizer.pad_token_id = model.config.eos_token_id
+    return pipe
 
 
 def _read_file_batch(
-    file_batch: List[pathlib.Path],
-    prompt_template: str,
+        file_batch: List[pathlib.Path],
+        prompt_template: str,
 ) -> List[str]:
     batch = []
     for file in file_batch:
-        with open(file, "r") as fp:
+        with open(file, "r", encoding='utf-8') as fp:
             batch.append(prompt_template.format(fp.read()))
     return batch
 
@@ -435,12 +488,13 @@ def _get_answers(generated_text: str, questions_amount: int) -> List[str]:
 
 
 def _answer_questions(
-    questions_amount: int,
-    batched_input: List[str],
-    generation_pipeline: transformers.Pipeline,
-    generation_config: transformers.GenerationConfig,
+        questions_amount: int,
+        batched_input: List[str],
+        generation_pipeline: transformers.Pipeline,
+        generation_config: transformers.GenerationConfig,
 ) -> List[List[str]]:
     # Infer through the llm:
+
     batched_output = generation_pipeline(
         batched_input,
         generation_config=generation_config,
@@ -448,7 +502,6 @@ def _answer_questions(
         return_full_text=False,
         num_return_sequences=1,
     )
-
     # Process the outputs to get the answers:
     batched_answers = []
     for output in batched_output:
@@ -459,5 +512,54 @@ def _answer_questions(
         )
         # Collect the processed answers:
         batched_answers.append(answers)
-
     return batched_answers
+
+
+def _list_me(list_to_check: list, name: str, length: int):
+    list_to_check = list_to_check if isinstance(list_to_check, list) else [list_to_check]
+    list_len = len(list_to_check)
+    if list_len != length:
+        if list_len == 1:
+            return list_to_check * length
+        else:
+            raise ValueError(
+                f"The argument value of '{name}' is not equal to the length of the given questions - {length}"
+            )
+    return list_to_check
+
+
+def _most_common_answer(answers):
+    count = Counter(answers)
+    most_common = count.most_common(1)
+    return most_common[0][0]
+
+
+def _average_answer(answers, mapping=None):
+    if isinstance(answers[0], str):
+        if mapping:
+            numeric_values = [_map_to_int(answer, mapping) for answer in answers]
+        else:
+            raise ValueError(
+                "Cannot perform poll with average answer strategy of non numeric values without a mapping,"
+                " please provide a mapping of string values to integers or choose 'most_common' as strategy."
+            )
+    else:
+        numeric_values = answers
+    avg = sum(numeric_values) / len(numeric_values)
+    # Round to the closest integer and return corresponding value
+    return _map_to_str(round(avg), mapping)
+
+
+def _map_to_int(answer, mapping):
+    try:
+        # Try to convert the answer to an integer
+        return int(answer)
+    except ValueError:
+        # If conversion fails, use the provided mapping
+        return mapping.get(answer, 0)
+
+
+def _map_to_str(answer, mapping):
+    if not mapping:
+        return answer
+    return next(key for key, value in mapping.items() if value == answer)
