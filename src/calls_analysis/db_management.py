@@ -267,30 +267,6 @@ def get_calls() -> pd.DataFrame:
     return calls
 
 
-def insert_agents(context: mlrun.MLClientCtx, agents: list):
-    # Create an engine:
-    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
-
-    # Initialize a session maker:
-    session = sessionmaker(engine)
-
-    # Insert the new calls into the table and commit:
-    with session.begin() as sess:
-        sess.execute(insert(Agent), agents)
-
-
-def insert_clients(context: mlrun.MLClientCtx, clients: list):
-    # Create an engine:
-    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
-
-    # Initialize a session maker:
-    session = sessionmaker(engine)
-
-    # Insert the new calls into the table and commit:
-    with session.begin() as sess:
-        sess.execute(insert(Client), clients)
-
-
 def get_agents(context: mlrun.MLClientCtx) -> list:
     # Create an engine:
     engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
