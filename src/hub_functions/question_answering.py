@@ -55,7 +55,7 @@ def _check_mlrun_and_open_mpi() -> Tuple["mlrun.MLClientCtx", "mpi4py.MPI.Intrac
 
 
 def open_mpi_handler(
-    worker_inputs: List[str], root_worker_inputs: Dict[str, Any] = None
+        worker_inputs: List[str], root_worker_inputs: Dict[str, Any] = None
 ):
     global _LOGGER
 
@@ -137,12 +137,11 @@ def answer_questions(
         tokenizer_kwargs: dict = None,
         text_wrapper: Union[str, List[str]] = "",
         questions_wrapper: Union[str, List[str]] = "",
-        generation_config: Union[Dict, List[Dict]] = {},
-        questions_config: Union[Dict, List[Dict]] = {},
+        generation_config: Union[Dict, List[Dict]] = None,
+        questions_config: Union[Dict, List[Dict]] = None,
         batch_size: int = 1,
         questions_columns: List[str] = None,
         verbose: bool = False,
-        mapping: Union[List[Dict], List[List[Dict]]] = None,
 ) -> Tuple[pd.DataFrame, dict]:
     """
     Answer questions with a context to the given text files contents by a pretrained LLM model. Each text file will have
@@ -184,10 +183,6 @@ def answer_questions(
     :param batch_size:                         Batch size for inference.
     :param questions_columns:                  Columns to use for the dataframe returned.
     :param verbose:                            Whether to present logs of a progress bar and errors. Default: True.
-    :param mapping:                            A list of dictionaries mapping string values to numeric values to use
-                                               when averaging answers. if more than one questioning type isn't normal,
-                                               it is expected to be a list of lists as long as the number of different
-                                               question steps given to this function.
 
 
     :returns: A tuple of:
@@ -196,6 +191,12 @@ def answer_questions(
               * A dictionary of errored files that were not inferred or were not answered properly.
     """
     global _LOGGER
+
+    # Set configs to empty dict if not given:
+    if generation_config is None:
+        generation_config = {}
+    if questions_config is None:
+        questions_config = {}
 
     # Get the input text files to question:
     if verbose:
@@ -212,16 +213,16 @@ def answer_questions(
     if verbose:
         _LOGGER.info("Creating prompt template.")
     # Organize questions as a list of list, and count number of sub-lists for future use
-    number_of_question_steps = 1 if isinstance(questions[0], str) else len(questions)
-    questions = _list_me(questions, "questions", number_of_question_steps)
+    number_of_question_groups = 1 if isinstance(questions[0], str) else len(questions)
+    questions = _list_me(questions, "questions", number_of_question_groups)
     # Organize prompt parts at proper length
-    text_wrapper = _list_me(text_wrapper, "text_wrapper", number_of_question_steps)
-    questions_wrapper = _list_me(questions_wrapper, "questions_wrapper", number_of_question_steps)
+    text_wrapper = _list_me(text_wrapper, "text_wrapper", number_of_question_groups)
+    questions_wrapper = _list_me(questions_wrapper, "questions_wrapper", number_of_question_groups)
     # Create a list of prompt according to given parts and questions
     prompt_template = []
     questions = questions if isinstance(questions[0], list) else [questions]
     # Build all prompts
-    for i in range(number_of_question_steps):
+    for i in range(number_of_question_groups):
         prompt_template.append(_get_prompt_template(
             text_wrapper=text_wrapper[i],
             questions_wrapper=questions_wrapper[i],
@@ -229,12 +230,13 @@ def answer_questions(
         ))
     if verbose:
         _LOGGER.info(f"Prompt template created:\n\n{prompt_template}\n")
-
+    # Get the total amount of questions:
     questions_amount = sum([len(sublist) for sublist in questions])
     # Get the questions columns:
     questions_columns = questions_columns or [
         f"q{i}" for i in range(1, questions_amount + 1)
     ]
+    # Check if we have the correct amount of questions columns:
     if len(questions_columns) != questions_amount:
         raise ValueError(
             f"The provided questions columns length ({len(questions_columns)}) "
@@ -244,7 +246,7 @@ def answer_questions(
     # Load the generation config:
     if verbose:
         _LOGGER.info("Loading generation configuration.")
-    generation_config = _list_me(generation_config, "generation_config", number_of_question_steps)
+    generation_config = _list_me(generation_config, "generation_config", number_of_question_groups)
     generation_configs = []
     # load a list of all appropriate configs 
     for cfg in generation_config:
@@ -277,7 +279,14 @@ def answer_questions(
         else text_files[i:]
         for i in range(0, len(text_files), batch_size)
     ]
-    questions_config = _list_me(questions_config, "questions_config", number_of_question_steps)
+    questions_config = _list_me(questions_config, "questions_config", number_of_question_groups)
+    # Create a list of question handlers according to given configs
+
+    handlers = []
+    for cfg in questions_config:
+        question_type = cfg.get("type") or "default"
+        handlers.append(QUESTION_MAPPING.get(question_type)(cfg))
+
     # Go over the batches of text files and question them:
     for file_batch in tqdm(
             file_batches,
@@ -286,55 +295,29 @@ def answer_questions(
             disable=not verbose,
     ):
         try:
-            total_answers = []
-            # Go over all questions in least per document/ batch of documents
-            for step in range(number_of_question_steps):
-                current_questions_amount = len(questions[step])
+            total_answers = [[] for _ in range(batch_size)]
+            # Go over all questions per document/ batch of documents
+            for question_group in range(number_of_question_groups):
+                current_questions_amount = len(questions[question_group])
                 # Read batch (read the text from the text files):
                 batched_input = _read_file_batch(
-                    file_batch=file_batch, prompt_template=prompt_template[step]
+                    file_batch=file_batch, prompt_template=prompt_template[question_group]
                 )
-                # Regular question answering
-                if questions_config[step] == {} or questions_config[step]["type"] == "default":
-                    # Infer batch:
-                    batched_answers = _answer_questions(
-                        questions_amount=current_questions_amount,
-                        batched_input=batched_input,
-                        generation_pipeline=generation_pipeline,
-                        generation_config=generation_configs[step],
-                    )
-                    batched_answers = batched_answers[0]
-                # Ask a number of models to "vote" on the correct answer
-                elif questions_config[step]["type"] == "poll":
-                    votes = []
-                    number_voters = (questions_config[step]["poll_count"] or 5)
-                    for k in range(number_voters):
-                        batched_answers = _answer_questions(
-                            questions_amount=current_questions_amount,
-                            batched_input=batched_input,
-                            generation_pipeline=generation_pipeline,
-                            generation_config=generation_configs[step],
-                        )
-                        votes += batched_answers
-                    batched_answers = []
-                    # Average strategy works for numeric values only
-                    if questions_config[step]["poll_strategy"] == "average":
-                        for question in current_questions_amount:
-                            # create a least of all answers to relevant question
-                            answer = [votes[voter][question] for voter in number_voters]
-                            # check if mapping just for this question step or for overs
-                            current_mapping = mapping if isinstance(mapping[0], dict) else mapping[i]
-                            batched_answers.append(_average_answer(answer, mapping=current_mapping[question]))
-                    elif questions_config[step]["poll_strategy"] == "most_common":
-                        for question in range(current_questions_amount):
-                            answer = [votes[voter][question] for voter in range(number_voters)]
-                            batched_answers.append(_most_common_answer(answer))
-                total_answers += batched_answers
-            # Collect it to the successes:
-            successes += [
+                # Answer the questions with each question handler:
+                batched_answers = handlers[question_group].handle_questions(
+                    questions_amount=current_questions_amount,
+                    batched_input=batched_input,
+                    generation_pipeline=generation_pipeline,
+                    generation_config=generation_configs[question_group]
+                )
+                # Put the answers in the correct place in the total answers list according to the place in the batch:
+                for i in range(batch_size):
+                    total_answers[i].extend(batched_answers[i])
+            # Collect the answers and attach the file name:
+            successes.extend([
                 [file.name, *answers]
-                for file, answers in zip(file_batch, [total_answers])
-            ]
+                for file, answers in zip(file_batch, total_answers)
+            ])
         except Exception as exception:
             # Note the exception as error in the dictionary:
             batch_file_names = ", ".join([file.name for file in file_batch])
@@ -344,7 +327,6 @@ def answer_questions(
                 )
             errors[batch_file_names] = str(exception)
             continue
-
     # Construct the answers dataframe:
     columns = [
         "text_file",
@@ -431,6 +413,7 @@ def _get_generation_pipeline(
     )
 
     # Set exllama max input length if provided:
+    # This changes the model's context size.
     if auto_gptq_exllama_max_input_length:
         from auto_gptq import exllama_set_max_input_length
 
@@ -466,68 +449,12 @@ def _read_file_batch(
     return batch
 
 
-def _get_answers(generated_text: str, questions_amount: int) -> List[str]:
-    # Clear answer start (part before numbers):
-    # TODO find better way to verify, for list of questions this is redundant for example
-    if "1." not in generated_text:
-        raise ValueError(
-            f"Answer 1. is missing from the generated text: '{generated_text}'"
-        )
-    text = generated_text.split("1.", 1)[1]
-
-    # Start extracting the answers:
-    answers = []
-    for i in range(1, questions_amount + 1):
-        # If it's the last answer to look for, take the rest of the text:
-        if i == questions_amount:
-            answer_i = text
-        # Verify there is a question number in the text:
-        elif f"{i + 1}." not in text:
-            raise ValueError(
-                f"Answer {i + 1}. is missing from the generated text: '{generated_text}'"
-            )
-        # Take i's answer:
-        else:
-            answer_i, text = text.split(f"{i + 1}.", 1)
-        # Collect the answer removing redundant spaces:
-        answers.append(answer_i.strip())
-
-    return answers
-
-
-def _answer_questions(
-        questions_amount: int,
-        batched_input: List[str],
-        generation_pipeline: transformers.Pipeline,
-        generation_config: transformers.GenerationConfig,
-) -> List[List[str]]:
-    # Infer through the llm:
-    batched_output = generation_pipeline(
-        batched_input,
-        generation_config=generation_config,
-        eos_token_id=generation_pipeline.tokenizer.eos_token_id,
-        return_full_text=False,
-        num_return_sequences=1,
-    )
-    # Process the outputs to get the answers:
-    batched_answers = []
-    for output in batched_output:
-        # Get the generated answers:
-        answers = _get_answers(
-            generated_text=output[0]["generated_text"],
-            questions_amount=questions_amount,
-        )
-        # Collect the processed answers:
-        batched_answers.append(answers)
-    return batched_answers
-
-
 def _list_me(list_to_check: list, name: str, length: int):
     # Check if is list, turn to list if not
     list_to_check = list_to_check if isinstance(list_to_check, list) else [list_to_check]
     list_len = len(list_to_check)
-    # if not a list, or is a list of len 1 we duplicate for correct length
-    # if list in wrong length throw an error 
+    # If not a list, or is a list of len 1 we duplicate for correct length
+    # If list in wrong length throw an error
     if list_len != length:
         if list_len == 1:
             return list_to_check * length
@@ -538,20 +465,195 @@ def _list_me(list_to_check: list, name: str, length: int):
     return list_to_check
 
 
-def _most_common_answer(answers):
-    count = Counter(answers)
-    most_common = count.most_common(1)
-    return most_common[0][0]
+class QuestionHandler:
+    """
+    A class for handling questions answering for a given question type.
+    This class is used as a base class for all question types, and for default question type (regular question
+    answering without any special handling).
+    """
 
+    class ConfigKeys:
+        pass
 
-def _average_answer(answers):
-    if isinstance(answers[0], str):
-        raise ValueError(
-            "Cannot perform poll with average answer strategy of non numeric values,"
-            " please change the question to give numeric data, or choose 'most_common' as strategy."
+    def __init__(self, qustion_config: dict = None):
+        if qustion_config is None:
+            qustion_config = {}
+        self.type = qustion_config.get("type") or "default"
+
+    @staticmethod
+    def _get_answers(generated_text: str, questions_amount: int) -> List[str]:
+        # Clear answer start (part before numbers):
+        # TODO find better way to verify, for list of questions this is redundant for example
+        if "1." not in generated_text:
+            raise ValueError(
+                f"Answer 1. is missing from the generated text: '{generated_text}'"
+            )
+        text = generated_text.split("1.", 1)[1]
+
+        # Start extracting the answers:
+        answers = []
+        for i in range(1, questions_amount + 1):
+            # If it's the last answer to look for, take the rest of the text:
+            if i == questions_amount:
+                answer_i = text
+            # Verify there is a question number in the text:
+            elif f"{i + 1}." not in text:
+                raise ValueError(
+                    f"Answer {i + 1}. is missing from the generated text: '{generated_text}'"
+                )
+            # Take i's answer:
+            else:
+                answer_i, text = text.split(f"{i + 1}.", 1)
+            # Collect the answer removing redundant spaces:
+            answers.append(answer_i.strip())
+
+        return answers
+
+    def _answer_questions(self,
+                          questions_amount: int,
+                          batched_input: List[str],
+                          generation_pipeline: transformers.Pipeline,
+                          generation_config: transformers.GenerationConfig,
+                          ) -> List[List[str]]:
+        # Infer through the llm:
+        batched_output = generation_pipeline(
+            batched_input,
+            generation_config=generation_config,
+            eos_token_id=generation_pipeline.tokenizer.eos_token_id,
+            return_full_text=False,
+            num_return_sequences=1,
         )
-    else:
-        numeric_values = answers
-    avg = sum(numeric_values) / len(numeric_values)
-    # Round to the closest integer and return corresponding value
-    return round(avg)
+        # Process the outputs to get the answers:
+        batched_answers = []
+        for output in batched_output:
+            # Get the generated answers:
+            answers = self._get_answers(
+                generated_text=output[0]["generated_text"],
+                questions_amount=questions_amount,
+            )
+            # Collect the processed answers:
+            batched_answers.append(answers)
+        return batched_answers
+
+    def handle_questions(self, questions_amount: int,
+                         batched_input: List[str],
+                         generation_pipeline: transformers.Pipeline,
+                         generation_config: transformers.GenerationConfig,
+                         ) -> List[List[str]]:
+        """
+        Answer questions with a context to the given text files contents by a pretrained LLM model in given pipeline.
+        """
+        return self._answer_questions(
+            questions_amount=questions_amount,
+            batched_input=batched_input,
+            generation_pipeline=generation_pipeline,
+            generation_config=generation_config,
+        )
+
+
+class PollQuestionHandler(QuestionHandler):
+    """
+    A class for handling questions answering for poll type questions.
+    These type of question are answered by asking the same question multiple times
+    and choosing the most common answer or the average answer.
+    """
+
+    class ConfigKeys:
+        """
+        A class for handling questions answering for poll type questions.
+        These type of question are answered by asking the same question multiple times
+        and choosing the most common answer or the average answer.
+        """
+        #: The number of times to ask the same question.
+        POLL_COUNT = "poll_count"
+        #: The strategy to use for choosing the answer from the poll.
+        POLL_STRATEGY = "poll_strategy"
+        #: The most common answer strategy.
+        MOST_COMMON = "most_common"
+        #: The average answer strategy.
+        AVERAGE = "average"
+
+    def __init__(self, question_config: dict):
+        super().__init__(question_config)
+        self.poll_count = question_config.get(self.ConfigKeys.POLL_COUNT) or 5
+        self.poll_strategy = question_config.get(self.ConfigKeys.POLL_STRATEGY) or "most_common"
+
+    @staticmethod
+    def _most_common_answer(answers):
+        """
+        Calculate the most common answer for a given list of answers.
+        """
+        count = Counter(answers)
+        most_common = count.most_common(1)
+        return most_common[0][0]
+
+    @staticmethod
+    def _average_answer(answers):
+        """
+        Calculate the average answer for a given list of answers.
+        """
+        if isinstance(answers[0], str):
+            raise ValueError(
+                "Cannot perform poll with average answer strategy of non numeric values,"
+                " please change the question to give numeric data, or choose 'most_common' as strategy."
+            )
+        else:
+            numeric_values = answers
+        avg = sum(numeric_values) / len(numeric_values)
+        # Round to the closest integer and return corresponding value
+        return round(avg)
+
+    def handle_questions(self, questions_amount: int,
+                         batched_input: List[str],
+                         generation_pipeline: transformers.Pipeline,
+                         generation_config: transformers.GenerationConfig,
+                         ) -> List[List[str]]:
+        """
+        Answer questions with a context to the given text files contents by a pretrained LLM model in given pipeline.
+        """
+        return self._answer_poll_questions(
+            questions_amount=questions_amount,
+            batched_input=batched_input,
+            generation_pipeline=generation_pipeline,
+            generation_config=generation_config,
+        )
+
+    def _answer_poll_questions(self, questions_amount: int, batched_input: List[str],
+                               generation_pipeline: transformers.Pipeline,
+                               generation_config: transformers.GenerationConfig,
+                               ) -> List[List[str]]:
+        votes = []
+        # Run the poll for each question
+        for _ in range(self.poll_count):
+            batched_answers = self._answer_questions(
+                questions_amount=questions_amount,
+                batched_input=batched_input,
+                generation_pipeline=generation_pipeline,
+                generation_config=generation_config,
+            )
+            votes.append(batched_answers)
+        answers = []
+        # Collect the answers according to the poll strategy
+        # Average strategy works for numeric values only
+        for batch in range(len(votes[0])):
+            batched_answers = []
+            for question in range(questions_amount):
+                # Create a list of all answers to relevant question
+                answer = [votes[voter][batch][question] for voter in range(self.poll_count)]
+                if self.poll_strategy == self.ConfigKeys.MOST_COMMON:
+                    answer = self._most_common_answer(answer)
+                elif self.poll_strategy == self.ConfigKeys.AVERAGE:
+                    answer = self._average_answer(answer)
+                batched_answers.append(answer)
+            answers.append(batched_answers)
+        return answers
+
+
+# Holds names of QuestionHandles
+class QuestionConstants:
+    DEFAULT = "default"
+    POLL = "poll"
+
+
+# Maps question types to their handlers
+QUESTION_MAPPING = {QuestionConstants.DEFAULT: QuestionHandler, QuestionConstants.POLL: PollQuestionHandler}
