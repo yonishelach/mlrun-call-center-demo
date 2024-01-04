@@ -151,8 +151,8 @@ def _set_calls_generation_functions(project: mlrun.projects.MlrunProject, gpus: 
     # Client and agent data generator
     _set_function(
         project=project,
-        func=os.path.join("src/hub_functions/json_data_generator.py"),
-        name="json-data-generator",
+        func=os.path.join("src/hub_functions/structured_data_generator.py"),
+        name="structured-data-generator",
         kind="job",
         gpus=gpus,
     )
