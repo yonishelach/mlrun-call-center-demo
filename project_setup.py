@@ -40,6 +40,7 @@ def setup(
     source = project.get_param(key="source")
     default_image = project.get_param(key="default_image")
     gpus = project.get_param(key="gpus", default=0)
+    node_name = project.get_param(key="node_name", default=None)
 
     # Set the project git source:
     if source:
@@ -63,8 +64,8 @@ def setup(
     )
 
     # Set the functions:
-    _set_calls_generation_functions(project=project, gpus=gpus)
-    _set_calls_analysis_functions(project=project, gpus=gpus)
+    _set_calls_generation_functions(project=project, gpus=gpus, node_name=node_name)
+    _set_calls_analysis_functions(project=project, gpus=gpus, node_name=node_name)
 
     # Set the workflows:
     _set_workflows(project=project)
@@ -126,6 +127,7 @@ def _set_function(
     name: str,
     kind: str,
     gpus: int = 0,
+    node_name: str = None,
 ):
     # Set the given function:
     mlrun_function = project.set_function(
@@ -142,27 +144,34 @@ def _set_function(
             # All GPUs for the single job:
             mlrun_function.with_limits(gpus=gpus)
 
+    # Set the node selection:
+    if node_name:
+        mlrun_function.with_node_selection(node_name=node_name)
     # Save:
     mlrun_function.save()
 
 
-def _set_calls_generation_functions(project: mlrun.projects.MlrunProject, gpus: int):
-    
+def _set_calls_generation_functions(
+    project: mlrun.projects.MlrunProject,
+    gpus: int,
+    node_name: str = None
+):
     # Client and agent data generator
     _set_function(
         project=project,
-        func=os.path.join("src/hub_functions/json_data_generator.py"),
-        name="json-data-generator",
+        func="./src/hub_functions/structured_data_generator.py",
+        name="structured_data_generator",
         kind="job",
-        gpus=gpus,
+        node_name=node_name,
     )
-        
+
     # Conversation generator:
     _set_function(
         project=project,
         func="./src/calls_generation/conversations_generator.py",
         name="conversations-generator",
         kind="job",
+        node_name=node_name,
     )
 
     # Text to audio generator:
@@ -172,16 +181,22 @@ def _set_calls_generation_functions(project: mlrun.projects.MlrunProject, gpus: 
         name="text-to-audio-generator",
         kind="job",  # TODO: MPI once MLRun supports it out of the box
         gpus=gpus,
+        node_name=node_name,
     )
 
 
-def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: int):
+def _set_calls_analysis_functions(
+    project: mlrun.projects.MlrunProject,
+    gpus: int,
+    node_name: str = None
+):
     # DB management:
     _set_function(
         project=project,
         func="./src/calls_analysis/db_management.py",
         name="db-management",
         kind="job",
+        node_name=node_name,
     )
 
     # Speech diarization:
@@ -191,6 +206,7 @@ def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: in
         name="speech-diarization",
         kind="mpijob" if gpus > 1 else "job",
         gpus=gpus,
+        node_name=node_name,
     )
 
     # Transcription:
@@ -200,6 +216,7 @@ def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: in
         name="transcription",
         kind="mpijob" if gpus > 1 else "job",
         gpus=gpus,
+        node_name=node_name,
     )
 
     # Translation:
@@ -209,6 +226,7 @@ def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: in
         name="translation",
         kind="mpijob" if gpus > 1 else "job",
         gpus=gpus,
+        node_name=node_name,
     )
 
     # PII recognition:
@@ -217,6 +235,7 @@ def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: in
         func="./src/hub_functions/pii_recognizer.py",
         name="pii-recognition",
         kind="job",
+        node_name=node_name,
     )
 
     # Question answering:
@@ -226,6 +245,7 @@ def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: in
         name="question-answering",
         kind="job",
         gpus=gpus,
+        node_name=node_name,
     )
 
     # Postprocessing:
@@ -234,6 +254,7 @@ def _set_calls_analysis_functions(project: mlrun.projects.MlrunProject, gpus: in
         func="./src/calls_analysis/postprocessing.py",
         name="postprocessing",
         kind="job",
+        node_name=node_name,
     )
 
 

@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple
 
 import mlrun
 import pandas as pd
-from sqlalchemy import (  
+from sqlalchemy import (
     ForeignKey,
     Boolean,
     Date,
@@ -32,7 +32,7 @@ from sqlalchemy import (
     select,
     update,
 )
-from sqlalchemy.orm import (  
+from sqlalchemy.orm import (
     relationship,
     Mapped,
     declarative_base,
@@ -48,7 +48,6 @@ FILE_PATH_LENGTH = 500
 Base = declarative_base()
 
 
-# TODO: client table
 class Client(Base):
     __tablename__ = "client"
 
@@ -56,14 +55,13 @@ class Client(Base):
     client_id: Mapped[str] = mapped_column(String(length=ID_LENGTH), primary_key=True)
     first_name: Mapped[str] = mapped_column(String(length=30))
     last_name: Mapped[str] = mapped_column(String(length=30))
-    phone: Mapped[str] = mapped_column(String(length=20))
+    phone_number: Mapped[str] = mapped_column(String(length=20))
     email: Mapped[str] = mapped_column(String(length=50))
 
     # Many-to-one relationship:
     calls: Mapped[List["Call"]] = relationship(back_populates="client", lazy=True)
 
 
-# TODO: agent table
 class Agent(Base):
     __tablename__ = "agent"
 
@@ -153,7 +151,7 @@ class Call(Base):
         default=None,
     )
 
-    # TODO: One-to-many relationships:
+    # One-to-many relationships:
     client: Mapped["Client"] = relationship(back_populates="calls", lazy=True)
     agent: Mapped["Agent"] = relationship(back_populates="calls", lazy=True)
 
@@ -167,6 +165,30 @@ def create_tables():
 
     # Create the schema's tables:
     Base.metadata.create_all(engine)
+
+
+def insert_clients(context: mlrun.MLClientCtx, clients: list):
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Insert the new calls into the table and commit:
+    with session.begin() as sess:
+        sess.execute(insert(Client), clients)
+
+
+def insert_agents(context: mlrun.MLClientCtx, agents: list):
+    # Create an engine:
+    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
+
+    # Initialize a session maker:
+    session = sessionmaker(engine)
+
+    # Insert the new calls into the table and commit:
+    with session.begin() as sess:
+        sess.execute(insert(Agent), agents)
 
 
 def insert_calls(
@@ -243,30 +265,6 @@ def get_calls() -> pd.DataFrame:
     return calls
 
 
-def insert_agents(context: mlrun.MLClientCtx, agents: list) :
-    # Create an engine:
-    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
-
-    # Initialize a session maker:
-    session = sessionmaker(engine)
-
-    # Insert the new agents into the table and commit:
-    with session.begin() as sess:
-        sess.execute(insert(Agent), agents)
-
-
-def insert_clients(context: mlrun.MLClientCtx, clients: list):
-    # Create an engine:
-    engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
-
-    # Initialize a session maker:
-    session = sessionmaker(engine)
-
-    # Insert the new clients into the table and commit:
-    with session.begin() as sess:
-        sess.execute(insert(Client), clients)
-
-
 def get_agents(context: mlrun.MLClientCtx) -> list:
     # Create an engine:
     engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
@@ -274,10 +272,9 @@ def get_agents(context: mlrun.MLClientCtx) -> list:
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Select all agents:
+    # Select all calls:
     with session.begin() as sess:
         agents = pd.read_sql(select(Agent), sess.connection())
-        agents = ast.literal_eval(agents) 
     return agents
 
 
@@ -288,8 +285,7 @@ def get_clients(context: mlrun.MLClientCtx) -> list:
     # Initialize a session maker:
     session = sessionmaker(engine)
 
-    # Select all clients:
+    # Select all calls:
     with session.begin() as sess:
         clients = pd.read_sql(select(Client), sess.connection())
-        clients = ast.literal_eval(clients)
     return clients

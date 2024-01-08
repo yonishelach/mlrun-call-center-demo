@@ -11,9 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 import pathlib
 import random
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import bark
 import numpy as np
@@ -22,9 +23,8 @@ import torch
 import torchaudio
 import tqdm
 
-# TODO:
-# def generate_single_speaker_audio():
-#     pass
+# Get the global logger:
+_LOGGER = logging.getLogger()
 
 
 def generate_multi_speakers_audio(
@@ -38,21 +38,36 @@ def generate_multi_speakers_audio(
     sample_rate: int = 16000,
     file_format: str = "wav",
     verbose: bool = True,
+    bits_per_sample: Optional[int] = None,
 ) -> Tuple[str, pd.DataFrame, dict]:
     """
+    Generate audio files from text files.
 
-    :param data_path:
-    :param output_directory:
-    :param speakers:
-    :param available_voices:
-    :param use_gpu:
-    :param use_small_models:
-    :param offload_cpu:
-    :param sample_rate:
-    :param file_format:
-    :param verbose:
+    :param data_path:           Path to the text file or directory containing the text files to generate audio from.
+    :param output_directory:    Path to the directory to save the generated audio files to.
+    :param speakers:            List / Dict of speakers to generate audio for.
+                                If a list is given, the speakers will be assigned to channels in the order given.
+                                If dictionary, the keys will be the speakers and the values will be the channels.
+    :param available_voices:    List of available voices to use for the generation.
+                        See here for the available voices:
+                        https://suno-ai.notion.site/8b8e8749ed514b0cbf3f699013548683?v=bc67cff786b04b50b3ceb756fd05f68c
+    :param use_gpu:             Whether to use the GPU for the generation.
+    :param use_small_models:    Whether to use the small models for the generation.
+    :param offload_cpu:         To reduce the memory footprint, the models can be offloaded to the CPU after loading.
+    :param sample_rate:         The sampling rate of the generated audio.
+    :param file_format:         The format of the generated audio files.
+    :param verbose:             Whether to print the progress of the generation.
+    :param bits_per_sample:     Changes the bit depth for the supported formats.
+                                Supported only in "wav" or "flac" formats.
 
+    :returns:                   A tuple of:
+                                - The output directory path.
+                                - The generated audio files dataframe.
+                                - The errors dictionary.
     """
+
+    global _LOGGER
+    _LOGGER = _get_logger()
     # Get the input text files to turn to audio:
     data_path = pathlib.Path(data_path).absolute()
     text_files = _get_text_files(data_path=data_path)
@@ -82,7 +97,7 @@ def generate_multi_speakers_audio(
 
     # Prepare the resampling module:
     resampler = torchaudio.transforms.Resample(
-        orig_freq=bark.SAMPLE_RATE, new_freq=sample_rate, dtype=torch.float64
+        orig_freq=bark.SAMPLE_RATE, new_freq=sample_rate, dtype=torch.float32
     )
 
     # Prepare the gap between each speaker:
@@ -101,6 +116,7 @@ def generate_multi_speakers_audio(
     for text_file in tqdm.tqdm(
         text_files, desc="Generating", unit="file", disable=not verbose
     ):
+
         try:
             # Randomize voices for each speaker:
             chosen_voices = {}
@@ -118,11 +134,14 @@ def generate_multi_speakers_audio(
                 if speaker_per_channel
                 else {"all": []}
             )
+
             # Generate audio per line:
             for line in text.splitlines():
                 # Validate line is in correct speaker format:
+
                 if ": " not in line:
-                    # TODO: if verbose: logger.warning(f"Skipping line: {line}")
+                    if verbose:
+                        _LOGGER.warning(f"Skipping line: {line}")
                     continue
                 # Split line to speaker and his words:
                 current_speaker, sentences = line.split(": ", 1)
@@ -148,26 +167,30 @@ def generate_multi_speakers_audio(
                     else:
                         audio_pieces["all"] += [audio, gap_between_speakers]
             # Construct a single audio array from all the pieces and channels:
+
             audio = np.vstack(
                 [np.concatenate(audio_pieces[speaker]) for speaker in speakers]
-            )
+            ).astype(dtype=np.float32)
             # Resample:
             audio = torch.from_numpy(audio)
             audio = resampler(audio)
             # Save to audio file:
             audio_file = output_directory / f"{text_file.stem}.{file_format}"
+
             torchaudio.save(
-                uri=audio_file,
+                uri=str(audio_file),
                 src=audio,
                 sample_rate=sample_rate,
                 format=file_format,
-                bits_per_sample=8,
+                bits_per_sample=bits_per_sample,
             )
+
             # Collect to the successes:
             successes.append([text_file.name, audio_file.name])
         except Exception as exception:
             # Note the exception as error in the dictionary:
-            # TODO: if verbose: logger.warning(f"Error in file: '{text_file.name}'")
+            if verbose:
+                _LOGGER.warning(f"Error in file: '{text_file.name}'")
             print(exception)
             errors[text_file.name] = str(exception)
 
@@ -178,12 +201,12 @@ def generate_multi_speakers_audio(
     )
 
     # Print the head of the produced dataframe and return:
-    # if verbose:
-    #     _LOGGER.info(
-    #         f"Done ({successes.shape[0]}/{len(text_files)})\n"
-    #         f"Translations summary:\n"
-    #         f"{successes.head()}"
-    #     )
+    if verbose:
+        _LOGGER.info(
+            f"Done ({successes.shape[0]}/{len(text_files)})\n"
+            f"Translations summary:\n"
+            f"{successes.head()}"
+        )
     return str(output_directory), successes, errors
 
 
@@ -228,3 +251,14 @@ def _split_line(line: str, max_length: int = 250) -> List[str]:
         splits.append(split)
 
     return splits
+
+
+def _get_logger():
+    global _LOGGER
+    try:
+        import mlrun
+        # Check if MLRun is available:
+        context = mlrun.get_or_create_ctx(name="mlrun")
+        return context.logger
+    except ModuleNotFoundError:
+        return _LOGGER

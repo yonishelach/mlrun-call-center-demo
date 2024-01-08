@@ -33,8 +33,8 @@ def generate_conversations(
     context: mlrun.MLClientCtx,
     amount: int,
     output_directory: str,
-    agent_data: list,
-    client_data: list,
+    agent_data: pd.DataFrame,
+    client_data: pd.DataFrame,
     model_name: str = "gpt-3.5-turbo",
     language: str = "en",
     min_time: int = 2,
@@ -43,27 +43,30 @@ def generate_conversations(
     to_date: str = "01.03.2023",
     from_time: str = "09:00",
     to_time: str = "17:00",
-    # TODO: Remove for using a dedicated generation function in 'data_generator.py'.
 
 ) -> Tuple[str, pd.DataFrame, pd.DataFrame]:
     """
     Generates a list of conversations between an internet provider call center and a customer.
 
-    :param context:
-    :param amount: The number of conversations to generate.
-    :param output_directory:
-    :param model_name: The name of the model to use for conversation generation. You should choose one of GPT-4 or
-                       GPT-3.5 from the list here: https://platform.openai.com/docs/models. Default: 'gpt-3.5-turbo'.
-    :param language: The language to use for the generated conversation text.
-    :param min_time: Minimum time of conversation in minutes. Will be used approximately to generate the minimum words
-                       with the following assessment: 240 words are equal to one minute. Default: 2.
-    :param max_time: Maximum time of conversation in minutes. Will be used approximately to generate the maximum words
-                       with the following assessment: 240 words are equal to one minute. Default: 5.
-    :param from_date:
-    :param to_date:
-    :param from_time:
-    :param to_time:
-
+    :param context:             The MLRun context.
+    :param amount:              The number of conversations to generate.
+    :param output_directory:    The directory to save the conversations to.
+    :param agent_data:          The agent data to use for the conversations.
+    :param client_data:         The client data to use for the conversations.
+    :param model_name:          The name of the model to use for conversation generation.
+                                You should choose one of GPT-4 or GPT-3.5 from the list here:
+                                https://platform.openai.com/docs/models. Default: 'gpt-3.5-turbo'.
+    :param language:            The language to use for the generated conversation text.
+    :param min_time:            Minimum time of conversation in minutes.
+                                Will be used approximately to generate the minimum words with the following assessment:
+                                240 words are equal to one minute. Default: 2.
+    :param max_time:            Maximum time of conversation in minutes.
+                                Will be used approximately to generate the maximum words  with the following assessment:
+                                240 words are equal to one minute. Default: 5.
+    :param from_date:           The minimum date of the conversation.
+    :param to_date:             The maximum date of the conversation.
+    :param from_time:           The minimum time (HH:MM) of the conversation.
+    :param to_time:             The maximum time (HH:MM) of the conversation.
     """
     # Get the minimum and maximum amount of words:
     min_words = WORDS_IN_1_MINUTE * min_time
@@ -77,16 +80,18 @@ def generate_conversations(
 
     # Create the concern addressed options:
     concern_addressed_options = {
-        "yes": "",
-        "no": "Don't",
+        True: "",
+        False: "Don't",
     }
-    
+
+    # Create the agent upsales options:
     agent_upsales_options = {
         "Doesn't try": "Doesn't try to upsale the customer on more services.",
         "Tries and doesn't succeed": "Tries to upsale the customer on more services, and doesn't succeed",
         "Tries and succeeds": "Tries to upsale the customer on more services, and succeeds",
     }
-    
+
+    # Create the upsale mapping:
     upsale_mapping = {
         "Doesn't try": [False, False],
         "Tries and doesn't succeed": [True, False],
@@ -144,8 +149,8 @@ def generate_conversations(
         client_tone = random.choice(TONES)
         agent_tone = random.choice(TONES)
         topic = random.choice(TOPICS)
-        agent = random.choice(agent_data)
-        client = random.choice(client_data)
+        agent = agent_data.sample().to_dict(orient="records")[0]
+        client = client_data.sample().to_dict(orient="records")[0]
 
         # Generate levels os different agent attributes:
         empathy = random.randint(1, 5)
@@ -191,8 +196,8 @@ def generate_conversations(
         conversation_text_path = output_directory / f"{conversation_id}.txt"
         with open(conversation_text_path, "w") as fp:
             fp.write(conversation)
+
         # Collect to the conversations and ground truths lists:
-        # TODO: Remove the clients and agents once are in separated tables
         conversations.append(
             [
                 conversation_id,
@@ -283,6 +288,7 @@ def create_batch_for_analysis(
     conversations_data.drop(columns="text_file", inplace=True)
     conversations_data.dropna(inplace=True)
     return conversations_data
+
 
 def _generate_id() -> str:
     return hashlib.md5(str(datetime.datetime.now()).encode("utf-8")).hexdigest()

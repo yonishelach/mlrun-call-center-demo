@@ -34,33 +34,36 @@ def pipeline(
     to_date: str,
     from_time: str,
     to_time: str,
-    num_clients: int,
-    num_agents: int,
+    num_clients: int = None,
+    num_agents: int = None,
     generate_clients_and_agents: bool = True,
-    
+    node_name: str = None,
 ):
     # Get the project:
     project = mlrun.get_current_project()
     
-    with dsl.Condition(generate_clients_and_agents == True) as generate_data_condition:
-        
+    with dsl.Condition(generate_clients_and_agents) as generate_data_condition:
         # Generate client data:
-        client_data_generator_function = project.get_function("json-data-generator")
+        client_data_generator_function = project.get_function("structured_data_generator")
         client_data_generator_function.apply(mlrun.auto_mount())
         client_data_run = project.run_function(
             client_data_generator_function,
             handler="generate_data",
+            name="client-data-generator",
             params={
-                "amount": num_clients,
+                "amount": num_clients or amount,
                 "model_name": generation_model,
                 "language": language,
-                "fields": ["first name", "last_name", "phone_number", "email", "client_id"],
+                "fields": [
+                    "first_name: in spanish, no special characters",
+                    "last_name: in spanish, no special characters",
+                    "phone_number",
+                    "email",
+                    "client_id",
+                ],
             },
-            returns=[
-                "clients: file",
-            ],
+            returns=["clients: file"],
         )
-        
 
         # Insert client data to database
         db_management_function = project.get_function("db-management")
@@ -73,25 +76,26 @@ def pipeline(
             },
         )
 
-
         # Generate agent data:
-        agent_data_generator_function = project.get_function("json-data-generator")
+        agent_data_generator_function = project.get_function("structured_data_generator")
         agent_data_generator_function.apply(mlrun.auto_mount())
         agent_data_run = project.run_function(
             agent_data_generator_function,
             handler="generate_data",
+            name="agent-data-generator",
             params={
-                "amount": num_agents,
+                "amount": num_agents or amount,
                 "model_name": generation_model,
                 "language": language,
-                "fields": ["first_name", "last_name", "agent_id"],
+                "fields": [
+                    "first_name: in spanish, no special characters",
+                    "last_name: in spanish, no special characters",
+                    "agent_id",
+                ],
             },
-            returns=[
-                "agents: file",
-            ],
+            returns=["agents: file"],
         )
-        
-        
+
         # Insert agent data to database
         db_management_function = project.get_function("db-management")
         # db_management_function.apply(mlrun.auto_mount())
@@ -103,28 +107,22 @@ def pipeline(
             },
         )
 
-    
     # Get agents from database
     db_management_function = project.get_function("db-management")
     # db_management_function.apply(mlrun.auto_mount())
     get_agents_run = project.run_function(
         db_management_function,
         handler="get_agents",
-        returns=[
-            "agents: file" 
-        ],
+        returns=["agents: file"],
     ).after(generate_data_condition)
-    
-    
+
     # Get clients from database
     db_management_function = project.get_function("db-management")
     # db_management_function.apply(mlrun.auto_mount())
     get_clients_run = project.run_function(
         db_management_function,
         handler="get_clients",
-        returns=[
-            "clients: file" 
-        ],
+        returns=["clients: file"],
     ).after(generate_data_condition)
     
     # Generate conversations texts:
@@ -146,7 +144,6 @@ def pipeline(
             "to_date": to_date,
             "from_time": from_time,
             "to_time": to_time,
-
         },
         inputs={
             "agent_data": get_agents_run.outputs['agents'],
@@ -162,6 +159,7 @@ def pipeline(
     # Text to audio:
     text_to_audio_generator_function = project.get_function("text-to-audio-generator")
     text_to_audio_generator_function.apply(mlrun.auto_mount())
+    text_to_audio_generator_function.with_node_selection(node_selector={"app.iguazio.com/node-group": node_name})
     generate_multi_speakers_audio_run = project.run_function(
         text_to_audio_generator_function,
         handler="generate_multi_speakers_audio",
