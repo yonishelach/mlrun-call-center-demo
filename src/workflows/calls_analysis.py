@@ -85,13 +85,12 @@ output_directory = os.path.abspath("./outputs")
 
 @kfp.dsl.pipeline()
 def pipeline(
-    data_path: str,
-    speaker_per_channel: bool,
-    transcribe_model: str,
-    pii_recognition_model: str,
-    pii_recognition_entities: List[str],
-    pii_recognition_entity_operator_map: List[str],
-    question_answering_model: str,
+        data_path: str,
+        transcribe_model: str,
+        pii_recognition_model: str,
+        pii_recognition_entities: List[str],
+        pii_recognition_entity_operator_map: List[str],
+        question_answering_model: str,
 ):
     # Get the project:
     project = mlrun.get_current_project()
@@ -117,12 +116,7 @@ def pipeline(
         handler="diarize",
         inputs={"data_path": insert_calls_run.outputs["audio_files"]},
         params={
-            "device": "cuda",
             "speakers_labels": ["Agent", "Client"],
-            "separate_by_channels": speaker_per_channel,
-            "cur_dir": os.path.join(
-                output_directory, "audio_files"
-            ),  # TODO: Delete once merged to mlrun/demos
         },
         returns=["speech_diarization: file", "diarize_errors: file"],
     )
@@ -153,10 +147,7 @@ def pipeline(
             "model_name": transcribe_model,
             "device": "cuda",
             "output_directory": os.path.join(output_directory, "transcriptions"),
-            "audio_duration": True,
-            "cur_dir": os.path.join(
-                output_directory, "audio_files"
-            ),  # TODO: Delete once merged to mlrun/demos
+            "use_better_transformers": True,
         },
         returns=[
             "transcriptions: path",

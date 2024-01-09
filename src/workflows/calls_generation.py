@@ -23,26 +23,25 @@ output_directory = os.path.abspath("./outputs")
 
 @kfp.dsl.pipeline()
 def pipeline(
-    amount: int,
-    generation_model: str,
-    text_to_speech_model: str,
-    language: str,
-    available_voices: List[str],
-    min_time: int,
-    max_time: int,
-    from_date: str,
-    to_date: str,
-    from_time: str,
-    to_time: str,
-    num_clients: int = None,
-    num_agents: int = None,
-    generate_clients_and_agents: bool = True,
-    node_name: str = None,
+        amount: int,
+        generation_model: str,
+        text_to_speech_model: str,
+        language: str,
+        available_voices: List[str],
+        min_time: int,
+        max_time: int,
+        from_date: str,
+        to_date: str,
+        from_time: str,
+        to_time: str,
+        num_clients: int,
+        num_agents: int,
+        generate_clients_and_agents: bool = True,
 ):
     # Get the project:
     project = mlrun.get_current_project()
-    
-    with dsl.Condition(generate_clients_and_agents) as generate_data_condition:
+
+    with dsl.Condition(generate_clients_and_agents == True) as generate_data_condition:
         # Generate client data:
         client_data_generator_function = project.get_function("structured_data_generator")
         client_data_generator_function.apply(mlrun.auto_mount())
@@ -51,7 +50,7 @@ def pipeline(
             handler="generate_data",
             name="client-data-generator",
             params={
-                "amount": num_clients or amount,
+                "amount": num_clients,
                 "model_name": generation_model,
                 "language": language,
                 "fields": [
@@ -67,7 +66,7 @@ def pipeline(
 
         # Insert client data to database
         db_management_function = project.get_function("db-management")
-        # db_management_function.apply(mlrun.auto_mount())
+        db_management_function.apply(mlrun.auto_mount())
         project.run_function(
             db_management_function,
             handler="insert_clients",
@@ -84,7 +83,7 @@ def pipeline(
             handler="generate_data",
             name="agent-data-generator",
             params={
-                "amount": num_agents or amount,
+                "amount": num_agents,
                 "model_name": generation_model,
                 "language": language,
                 "fields": [
@@ -98,7 +97,7 @@ def pipeline(
 
         # Insert agent data to database
         db_management_function = project.get_function("db-management")
-        # db_management_function.apply(mlrun.auto_mount())
+        db_management_function.apply(mlrun.auto_mount())
         project.run_function(
             db_management_function,
             handler="insert_agents",
@@ -109,7 +108,7 @@ def pipeline(
 
     # Get agents from database
     db_management_function = project.get_function("db-management")
-    # db_management_function.apply(mlrun.auto_mount())
+    db_management_function.apply(mlrun.auto_mount())
     get_agents_run = project.run_function(
         db_management_function,
         handler="get_agents",
@@ -118,13 +117,13 @@ def pipeline(
 
     # Get clients from database
     db_management_function = project.get_function("db-management")
-    # db_management_function.apply(mlrun.auto_mount())
+    db_management_function.apply(mlrun.auto_mount())
     get_clients_run = project.run_function(
         db_management_function,
         handler="get_clients",
         returns=["clients: file"],
     ).after(generate_data_condition)
-    
+
     # Generate conversations texts:
     conversations_generator_function = project.get_function("conversations-generator")
     conversations_generator_function.apply(mlrun.auto_mount())
@@ -159,7 +158,6 @@ def pipeline(
     # Text to audio:
     text_to_audio_generator_function = project.get_function("text-to-audio-generator")
     text_to_audio_generator_function.apply(mlrun.auto_mount())
-    text_to_audio_generator_function.with_node_selection(node_selector={"app.iguazio.com/node-group": node_name})
     generate_multi_speakers_audio_run = project.run_function(
         text_to_audio_generator_function,
         handler="generate_multi_speakers_audio",

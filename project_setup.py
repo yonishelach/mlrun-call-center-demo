@@ -39,7 +39,7 @@ def setup(
     # Unpack parameters:
     source = project.get_param(key="source")
     default_image = project.get_param(key="default_image")
-    gpus = project.get_param(key="gpus", default=0)
+    gpus = project.get_param(key="gpus", default=[0, 0])
     node_name = project.get_param(key="node_name", default=None)
 
     # Set the project git source:
@@ -64,8 +64,8 @@ def setup(
     )
 
     # Set the functions:
-    _set_calls_generation_functions(project=project, gpus=gpus, node_name=node_name)
-    _set_calls_analysis_functions(project=project, gpus=gpus, node_name=node_name)
+    _set_calls_generation_functions(project=project, gpus=gpus[0], node_name=node_name)
+    _set_calls_analysis_functions(project=project, gpus=gpus[1], node_name=node_name)
 
     # Set the workflows:
     _set_workflows(project=project)
@@ -135,7 +135,8 @@ def _set_function(
     )
 
     # Configure GPUs according to the given kind:
-    if gpus > 1:
+    if gpus >= 1:
+        mlrun_function.with_node_selection(node_selector={"app.iguazio.com/node-group": "added-t4"})
         if kind == "mpijob":
             # 1 GPU for each rank:
             mlrun_function.with_limits(gpus=1)
@@ -143,9 +144,8 @@ def _set_function(
         else:
             # All GPUs for the single job:
             mlrun_function.with_limits(gpus=gpus)
-
     # Set the node selection:
-    if node_name:
+    elif node_name:
         mlrun_function.with_node_selection(node_name=node_name)
     # Save:
     mlrun_function.save()
@@ -156,11 +156,13 @@ def _set_calls_generation_functions(
     gpus: int,
     node_name: str = None
 ):
+    import os
+    print(os.system("ls -l"))
     # Client and agent data generator
     _set_function(
         project=project,
         func="./src/hub_functions/structured_data_generator.py",
-        name="structured_data_generator",
+        name="structured-data-generator",
         kind="job",
         node_name=node_name,
     )
@@ -181,7 +183,6 @@ def _set_calls_generation_functions(
         name="text-to-audio-generator",
         kind="job",  # TODO: MPI once MLRun supports it out of the box
         gpus=gpus,
-        node_name=node_name,
     )
 
 
@@ -202,10 +203,9 @@ def _set_calls_analysis_functions(
     # Speech diarization:
     _set_function(
         project=project,
-        func="./src/hub_functions/speech_diarization.py",
+        func="./src/hub_functions/silero_vad.py",
         name="speech-diarization",
-        kind="mpijob" if gpus > 1 else "job",
-        gpus=gpus,
+        kind="job",
         node_name=node_name,
     )
 
