@@ -420,26 +420,12 @@ def detect_voice(
     """
     global _LOGGER
 
-    # *** DEBUG ***
-    import mlrun
-    context = mlrun.get_or_create_ctx(name="mlrun")
+    # Get the input audio files to transcribe:
     if verbose:
-        context.logger.info("Collecting audio files.")
+        _LOGGER.info("Collecting audio files.")
     audio_files = _get_audio_files(data_path=data_path)
     if verbose:
-        context.logger.info(f"Collected {len(audio_files)} audio files.")
-    # *** DEBUG ***
-    # TODO: after debug is done, remove the above and uncomment the below
-    # Get the input audio files to transcribe:
-    # if verbose:
-    #     # TODO: debug - remove and use the _LOGGER
-    #     context.logger.info("Collecting audio files.")
-    #     # _LOGGER.info("Collecting audio files.")
-    # audio_files = _get_audio_files(data_path=data_path)
-    # if verbose:
-    #     # TODO: debug - remove and use the _LOGGER
-    #     context.logger.info(f"Collected {len(audio_files)} audio files.")
-    #     # _LOGGER.info(f"Collected {len(audio_files)} audio files.")
+        _LOGGER.info(f"Collected {len(audio_files)} audio files.")
 
     # Initialize the transcription pipeline:
     vad_init_kwargs = {
@@ -557,12 +543,22 @@ def diarize(
     """
     global _LOGGER
 
-    # Get the input audio files to transcribe:
+    # *** DEBUG ***
+    import mlrun
+    context = mlrun.get_or_create_ctx(name="mlrun")
     if verbose:
-        _LOGGER.info("Collecting audio files.")
+        context.logger.info("Collecting audio files.")
     audio_files = _get_audio_files(data_path=data_path)
     if verbose:
-        _LOGGER.info(f"Collected {len(audio_files)} audio files.")
+        context.logger.info(f"Collected {len(audio_files)} audio files.")
+    # *** DEBUG ***
+    # TODO: after debug is done, remove the above and uncomment the below
+    # Get the input audio files to transcribe:
+    # if verbose:
+    #     _LOGGER.info("Collecting audio files.")
+    # audio_files = _get_audio_files(data_path=data_path)
+    # if verbose:
+    #     _LOGGER.info(f"Collected {len(audio_files)} audio files.")
 
     # Initialize the transcription pipeline:
     vad_init_kwargs = {
