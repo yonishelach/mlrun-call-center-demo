@@ -846,9 +846,9 @@ def _get_all_rpt(res_dict: dict, is_full_report: bool = True):
 def recognize_pii(
     context: mlrun.MLClientCtx,
     input_path: Union[str, pathlib.Path],
-    output_directory: str,
     html_key: str,
     score_threshold: float,
+    output_directory: str = None,
     entities: List[
         str
     ] = None,  # List of entities to recognize, default is recognizing all
@@ -861,18 +861,19 @@ def recognize_pii(
     is_full_report: bool = True,
 ) -> Union[Tuple[str, pd.DataFrame, dict, dict], Tuple[str, pd.DataFrame, dict]]:
     """
-    Walk through the input path, recognize PII in text and store the anonymized text in the output path. Generate the html with different colors for each entity, json report of the explaination.
+    Walk through the input path, recognize PII in text and store the anonymized text in the output path.
+    Generate the html with different colors for each entity, json report of the explanation.
 
     :param context:              The MLRun context. this is needed for log the artifacts.
-    :param input_path:           The input path of the text files needs to be analyzied.
-    :param output_directory:     The output directory path to store the anonymized text.
+    :param input_path:           The input path of the text files needs to be analyzed.
     :param html_key:             The html key for the artifact.
     :param score_threshold:      The score threshold to mark the recognition as trusted.
+    :param output_directory:     The output directory path to store the anonymized text.
     :param entities:             The list of entities to recognize.
     :param entity_operator_map:  The map of entity to operator (mask, redact, replace, keep, hash, and its params)
     :param model:                The model to use. Can be "spacy", "flair", "pattern" or "whole".
-    :param generate_json:        Whether to generate the json report of the explaination.
-    :param generate_html:        Whether to generate the html report of the explaination.
+    :param generate_json:        Whether to generate the json report of the explanation.
+    :param generate_html:        Whether to generate the html report of the explanation.
     :param is_full_text:         Whether to return the full text or only the masked text.
     :param is_full_html:         Whether to return the full html or just the annotated text
     :param is_full_report:       Whether to return the full report or just the score and start, end index

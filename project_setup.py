@@ -33,7 +33,6 @@ def setup(
     # Unpack secrets from environment variables:
     openai_key = os.environ[ProjectSecrets.OPENAI_API_KEY]
     openai_base = os.environ[ProjectSecrets.OPENAI_API_BASE]
-    huggingface_token = os.environ[ProjectSecrets.HUGGING_FACE_HUB_TOKEN]
     mysql_url = os.environ[ProjectSecrets.MYSQL_URL]
 
     # Unpack parameters:
@@ -59,7 +58,6 @@ def setup(
         project=project,
         openai_key=openai_key,
         openai_base=openai_base,
-        huggingface_token=huggingface_token,
         mysql_url=mysql_url,
     )
 
@@ -107,7 +105,6 @@ def _set_secrets(
     project: mlrun.projects.MlrunProject,
     openai_key: str,
     openai_base: str,
-    huggingface_token: str,
     mysql_url: str,
 ):
     # Must have secrets:
@@ -115,7 +112,6 @@ def _set_secrets(
         secrets={
             ProjectSecrets.OPENAI_API_KEY: openai_key,
             ProjectSecrets.OPENAI_API_BASE: openai_base,
-            ProjectSecrets.HUGGING_FACE_HUB_TOKEN: huggingface_token,
             ProjectSecrets.MYSQL_URL: mysql_url,
         }
     )

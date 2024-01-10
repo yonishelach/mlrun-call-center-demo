@@ -23,20 +23,20 @@ output_directory = os.path.abspath("./outputs")
 
 @kfp.dsl.pipeline()
 def pipeline(
-        amount: int,
-        generation_model: str,
-        text_to_speech_model: str,
-        language: str,
-        available_voices: List[str],
-        min_time: int,
-        max_time: int,
-        from_date: str,
-        to_date: str,
-        from_time: str,
-        to_time: str,
-        num_clients: int,
-        num_agents: int,
-        generate_clients_and_agents: bool = True,
+    amount: int,
+    generation_model: str,
+    text_to_speech_model: str,
+    language: str,
+    available_voices: List[str],
+    min_time: int,
+    max_time: int,
+    from_date: str,
+    to_date: str,
+    from_time: str,
+    to_time: str,
+    num_clients: int,
+    num_agents: int,
+    generate_clients_and_agents: bool = True,
 ):
     # Get the project:
     project = mlrun.get_current_project()

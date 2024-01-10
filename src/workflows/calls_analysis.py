@@ -79,29 +79,26 @@ QUESTIONS_WRAPPER = (
     "<|im_start|>assistant:\n"
 )
 
-# TODO: Delete once merged to mlrun/demos
-output_directory = os.path.abspath("./outputs")
-
 
 @kfp.dsl.pipeline()
 def pipeline(
-        data_path: str,
-        transcribe_model: str,
-        pii_recognition_model: str,
-        pii_recognition_entities: List[str],
-        pii_recognition_entity_operator_map: List[str],
-        question_answering_model: str,
+    batch: str,
+    calls_audio_files: str,
+    transcribe_model: str,
+    pii_recognition_model: str,
+    pii_recognition_entities: List[str],
+    pii_recognition_entity_operator_map: List[str],
+    question_answering_model: str,
 ):
     # Get the project:
     project = mlrun.get_current_project()
 
     # Insert new calls:
     db_management_function = project.get_function("db-management")
-    db_management_function.apply(mlrun.auto_mount())
     insert_calls_run = project.run_function(
         db_management_function,
         handler="insert_calls",
-        inputs={"calls": data_path},
+        inputs={"calls": batch},
         returns=[
             "calls_batch: dataset",
             "audio_files: file",
@@ -110,16 +107,15 @@ def pipeline(
 
     # Speech diarize:
     speech_diarization_function = project.get_function("speech-diarization")
-    speech_diarization_function.apply(mlrun.auto_mount())
     diarize_run = project.run_function(
         speech_diarization_function,
         handler="diarize",
-        inputs={"data_path": insert_calls_run.outputs["audio_files"]},
+        inputs={"data_path": calls_audio_files},
         params={
             "speakers_labels": ["Agent", "Client"],
         },
         returns=["speech_diarization: file", "diarize_errors: file"],
-    )
+    ).after(insert_calls_run)
 
     # Update diarization state:
     update_calls_post_speech_diarization_run = project.run_function(
@@ -135,19 +131,18 @@ def pipeline(
 
     # Transcribe:
     transcription_function = project.get_function("transcription")
-    transcription_function.apply(mlrun.auto_mount())
     transcribe_run = project.run_function(
         transcription_function,
         handler="transcribe",
         inputs={
-            "data_path": insert_calls_run.outputs["audio_files"],
+            "data_path": calls_audio_files,
             "speech_diarization": diarize_run.outputs["speech_diarization"],
         },
         params={
             "model_name": transcribe_model,
             "device": "cuda",
-            "output_directory": os.path.join(output_directory, "transcriptions"),
             "use_better_transformers": True,
+
         },
         returns=[
             "transcriptions: path",
@@ -170,14 +165,12 @@ def pipeline(
 
     # Recognize PII:
     pii_recognition_function = project.get_function("pii-recognition")
-    pii_recognition_function.apply(mlrun.auto_mount())
     recognize_pii_run = project.run_function(
         pii_recognition_function,
         handler="recognize_pii",
         inputs={"input_path": transcribe_run.outputs["transcriptions"]},
         params={
             "model": pii_recognition_model,
-            "output_directory": os.path.join(output_directory, "anonymized_files"),
             "html_key": "highlighted",
             "entities": pii_recognition_entities,
             "entity_operator_map": pii_recognition_entity_operator_map,
@@ -206,7 +199,6 @@ def pipeline(
 
     # Question-answering:
     question_answering_function = project.get_function("question-answering")
-    question_answering_function.apply(mlrun.auto_mount())
     answer_questions_run = project.run_function(
         question_answering_function,
         handler="answer_questions",
@@ -245,7 +237,6 @@ def pipeline(
 
     # Postprocess answers:
     postprocessing_function = project.get_function("postprocessing")
-    postprocessing_function.apply(mlrun.auto_mount())
     postprocess_answers_run = project.run_function(
         postprocessing_function,
         handler="postprocess_answers",
