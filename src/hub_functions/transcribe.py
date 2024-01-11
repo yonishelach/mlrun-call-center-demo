@@ -13,6 +13,8 @@
 # limitations under the License.
 import logging
 import operator
+import os
+import shutil
 import tempfile
 from functools import reduce, wraps
 from multiprocessing import Process, Queue
@@ -972,14 +974,29 @@ def open_mpi_handler(
             # Send the output to the root rank (rank #0):
             output = comm.gather(output, root=0)
             if rank == 0:
-                # Join the outputs:
                 context.logger.info("Collecting data from workers to root worker.")
-                output_directory = output[0][0]
+                # Join the output directories (in case an output directory was not provided and temporary was used, it
+                # will be different among each worker):
+                output_directories = set([Path(out_dir) for out_dir, _, _ in output])
+                output_directory = (
+                    output_directories.pop()
+                )  # Take rank's 0 output directory.
+                if len(output_directories) > 0:
+                    # There are different output directories among workers, join them into rank's 0 temporary directory:
+                    for out_dir in output_directories:
+                        files = os.listdir(out_dir)
+                        for file_name in files:
+                            shutil.move(
+                                src=out_dir / file_name,
+                                dst=output_directory / file_name,
+                            )
+                # Concatenate the dataframes:
                 dataframe = pd.concat(objs=[df for _, df, _ in output], axis=0)
+                # Concatenate the errors dictionaries:
                 errors_dictionary = reduce(
                     operator.ior, [err for _, _, err in output], {}
                 )
-                return output_directory, dataframe, errors_dictionary
+                return str(output_directory), dataframe, errors_dictionary
             return None
 
         return wrapper
@@ -1362,11 +1379,6 @@ def _parallel_run(
         audio_files=audio_files, batches_queue=batches_queue, verbose=verbose
     )
 
-    # Wait for the processes to finish:
-    batch_processing_process.join()
-    for p in task_completion_processes:
-        p.join()
-
     # Collect the results:
     results = []
     stop_marks_counter = 0
@@ -1380,5 +1392,10 @@ def _parallel_run(
         else:
             # Collect the result:
             results.append(result)
+
+    # Wait for the processes to finish:
+    batch_processing_process.join()
+    for p in task_completion_processes:
+        p.join()
 
     return results
