@@ -115,7 +115,7 @@ def pipeline(
         name="diarization",
         inputs={"data_path": calls_audio_files},
         params={
-            "speakers_labels": ["Agent", "Client"],
+            "speaker_labels": ["Agent", "Client"],
             "verbose": True,
         },
         returns=["speech_diarization: file", "diarize_errors: file"],

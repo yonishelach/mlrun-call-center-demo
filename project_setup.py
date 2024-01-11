@@ -38,7 +38,7 @@ def setup(
     # Unpack parameters:
     source = project.get_param(key="source")
     default_image = project.get_param(key="default_image")
-    gpus = project.get_param(key="gpus", default=[0, 0])
+    gpus = project.get_param(key="gpus", default=0)
     node_name = project.get_param(key="node_name", default=None)
 
     # Set the project git source:
@@ -62,8 +62,8 @@ def setup(
     )
 
     # Set the functions:
-    _set_calls_generation_functions(project=project, gpus=gpus[0], node_name=node_name)
-    _set_calls_analysis_functions(project=project, gpus=gpus[1], node_name=node_name)
+    _set_calls_generation_functions(project=project, gpus=gpus, node_name=node_name)
+    _set_calls_analysis_functions(project=project, gpus=gpus, node_name=node_name)
 
     # Set the workflows:
     _set_workflows(project=project)

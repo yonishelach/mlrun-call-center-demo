@@ -179,7 +179,7 @@ def pipeline(
     create_batch_for_analysis_run = project.run_function(
         conversations_generator_function,
         handler="create_batch_for_analysis",
-        name="bach-creation",
+        name="batch-creation",
         inputs={
             "conversations_data": generate_conversations_run.outputs["metadata"],
             "audio_files": generate_multi_speakers_audio_run.outputs[
