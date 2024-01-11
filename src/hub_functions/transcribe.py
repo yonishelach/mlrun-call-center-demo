@@ -971,39 +971,46 @@ def open_mpi_handler(
             # Run the worker:
             output = handler(**kwargs)
 
+            # Save the output directory of this worker:
+            output_directory = Path(output[0])
+
             # Send the output to the root rank (rank #0):
             output = comm.gather(output, root=0)
+
+            # Join the data from all workers:
             if rank == 0:
                 context.logger.info("Collecting data from workers to root worker.")
-                # Join the output directories (in case an output directory was not provided and temporary was used, it
-                # will be different among each worker):
+                # Check if there are different output directories:
                 output_directories = set([Path(out_dir) for out_dir, _, _ in output])
-                output_directory = (
-                    output_directories.pop()
-                )  # Take rank's 0 output directory.
-                if len(output_directories) > 0:
-                    # There are different output directories among workers, join them into rank's 0 temporary directory:
-                    for out_dir in output_directories:
-                        files = os.listdir(out_dir)
-                        for file_name in files:
-                            shutil.move(
-                                src=out_dir / file_name,
-                                dst=output_directory / file_name,
-                            )
+                for r in range(1, size):
+                    # True means the other workers should pass their files to the root worker (rank 0):
+                    comm.send(len(output_directories) != 1, dest=r)
+                # If there are different output directories, listen to the other workers:
+                if len(output_directories) != 1:
+                    # Collect the files from the other workers:
+                    files = []
+                    for r in range(1, size):
+                        files.extend(comm.recv(source=r))
+                    # Write the files to the root worker's output directory:
+                    for file_name, file_content in files:
+                        with open(output_directory / file_name, "w") as f:
+                            f.write(file_content)
                 # Concatenate the dataframes:
                 dataframe = pd.concat(objs=[df for _, df, _ in output], axis=0)
                 # Concatenate the errors dictionaries:
                 errors_dictionary = reduce(
                     operator.ior, [err for _, _, err in output], {}
                 )
-                # Send message to other ranks to stop:
-                for r in range(1, size):
-                    comm.send(obj="STOP", dest=r)
 
                 return str(output_directory), dataframe, errors_dictionary
-            else:
-                # Wait for the root rank to finish:
-                comm.recv(source=0)
+            # Listen to rank 0 to see if there are different output directories and this rank need to send its files to
+            # it:
+            if comm.recv(source=0):
+                files = []
+                for file in os.listdir(output_directory):
+                    with open(output_directory / file, "r") as f:
+                        files.append((file, f.read()))
+                comm.send(files, dest=0)
             return None
 
         return wrapper
