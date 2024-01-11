@@ -124,10 +124,11 @@ def _set_function(
     kind: str,
     gpus: int = 0,
     node_name: str = None,
+    image: str = None,
 ):
     # Set the given function:
     mlrun_function = project.set_function(
-        func=func, name=name, kind=kind, with_repo=True
+        func=func, name=name, kind=kind, with_repo=True, image=image,
     )
 
     # Configure GPUs according to the given kind:
@@ -200,7 +201,7 @@ def _set_calls_analysis_functions(
     _set_function(
         project=project,
         func="./src/hub_functions/silero_vad.py",
-        name="speech-diarization",
+        name="silero-vad",
         kind="job",
         node_name=node_name,
     )
@@ -232,6 +233,7 @@ def _set_calls_analysis_functions(
         name="pii-recognition",
         kind="job",
         node_name=node_name,
+        image="guyliguazio/call-center-11.8:1.4.1.6",
     )
 
     # Question answering:

@@ -89,6 +89,7 @@ def pipeline(
     pii_recognition_entities: List[str],
     pii_recognition_entity_operator_map: List[str],
     question_answering_model: str,
+    batch_size: int = 2,
 ):
     # Get the project:
     project = mlrun.get_current_project()
@@ -98,6 +99,7 @@ def pipeline(
     insert_calls_run = project.run_function(
         db_management_function,
         handler="insert_calls",
+        name="insert-calls",
         inputs={"calls": batch},
         returns=[
             "calls_batch: dataset",
@@ -106,13 +108,15 @@ def pipeline(
     )
 
     # Speech diarize:
-    speech_diarization_function = project.get_function("speech-diarization")
+    speech_diarization_function = project.get_function("silero-vad")
     diarize_run = project.run_function(
         speech_diarization_function,
         handler="diarize",
+        name="diarization",
         inputs={"data_path": calls_audio_files},
         params={
             "speakers_labels": ["Agent", "Client"],
+            "verbose": True,
         },
         returns=["speech_diarization: file", "diarize_errors: file"],
     ).after(insert_calls_run)
@@ -121,6 +125,7 @@ def pipeline(
     update_calls_post_speech_diarization_run = project.run_function(
         db_management_function,
         handler="update_calls",
+        name="update-calls",
         inputs={"data": insert_calls_run.outputs["calls_batch"]},
         params={
             "status": CallStatus.SPEECH_DIARIZED.value,
@@ -134,6 +139,7 @@ def pipeline(
     transcribe_run = project.run_function(
         transcription_function,
         handler="transcribe",
+        name="transcription",
         inputs={
             "data_path": calls_audio_files,
             "speech_diarization": diarize_run.outputs["speech_diarization"],
@@ -142,6 +148,7 @@ def pipeline(
             "model_name": transcribe_model,
             "device": "cuda",
             "use_better_transformers": True,
+            "batch_size": batch_size,
 
         },
         returns=[
@@ -155,6 +162,7 @@ def pipeline(
     update_calls_post_transcription_run = project.run_function(
         db_management_function,
         handler="update_calls",
+        name="update-calls-2",
         inputs={"data": transcribe_run.outputs["transcriptions_dataframe"]},
         params={
             "status": CallStatus.TRANSCRIBED.value,
@@ -168,6 +176,7 @@ def pipeline(
     recognize_pii_run = project.run_function(
         pii_recognition_function,
         handler="recognize_pii",
+        name="pii-recognition",
         inputs={"input_path": transcribe_run.outputs["transcriptions"]},
         params={
             "model": pii_recognition_model,
@@ -189,6 +198,7 @@ def pipeline(
     update_calls_post_pii_recognition_run = project.run_function(
         db_management_function,
         handler="update_calls",
+        name="update-calls-3",
         inputs={"data": recognize_pii_run.outputs["anonymized_files_dataframe"]},
         params={
             "status": CallStatus.ANONYMIZED.value,
@@ -202,6 +212,7 @@ def pipeline(
     answer_questions_run = project.run_function(
         question_answering_function,
         handler="answer_questions",
+        name="question-answering",
         inputs={"data_path": recognize_pii_run.outputs["anonymized_files"]},
         params={
             "verbose": True,
@@ -240,6 +251,7 @@ def pipeline(
     postprocess_answers_run = project.run_function(
         postprocessing_function,
         handler="postprocess_answers",
+        name="answers-postprocessing",
         inputs={
             "answers": answer_questions_run.outputs["question_answering_dataframe"]
         },
@@ -250,6 +262,7 @@ def pipeline(
     update_calls_post_question_answering_run = project.run_function(
         db_management_function,
         handler="update_calls",
+        name="update-calls-4",
         inputs={"data": postprocess_answers_run.outputs["processed_answers"]},
         params={
             "status": CallStatus.ANALYZED.value,

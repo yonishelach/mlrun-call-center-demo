@@ -14,7 +14,6 @@
 import logging
 import operator
 import os
-import shutil
 import tempfile
 from functools import reduce, wraps
 from multiprocessing import Process, Queue
@@ -72,7 +71,7 @@ class BaseTask:
         """
         Check if the task failed.
 
-        :return: Whether the task failed.
+        :returns: Whether the task failed.
         """
         return self._error is not None
 
@@ -81,11 +80,23 @@ class BaseTask:
         Get the result of the task. If the task failed, the error will be returned, otherwise, the result will be the
         text file name.
 
-        :return: The task's result.
+        :returns: The task's result.
         """
         if self.is_failed():
             return self._audio_file.name, self._error
         return self._audio_file.name, self._text_file.name
+
+    def to_tuple(self) -> Tuple[str, dict]:
+        """
+        Convert the task to a tuple to reconstruct it later (used for multiprocessing to pass in queue).
+
+        :returns: The converted task.
+        """
+        return self.__class__.__name__, {
+            "audio_file": self._audio_file,
+            "transcription_output": self._transcription_output,
+            "text_file": self._text_file,
+        }
 
     def _do_task(self):
         """
@@ -154,6 +165,18 @@ class SpeechDiarizationTask(BaseTask):
         self._speech_diarization = speech_diarization
         self._segments: List[SpeechDiarizationTask._DiarizationSegment] = None
         self._last_chosen_index = 0
+
+    def to_tuple(self) -> Tuple[str, dict]:
+        """
+        Convert the task to a tuple to reconstruct it later (used for multiprocessing to pass in queue).
+
+        :returns: The converted task.
+        """
+        task_class, task_kwargs = super().to_tuple()
+        return task_class, {
+            **task_kwargs,
+            "speech_diarization": self._speech_diarization,
+        }
 
     def _do_task(self):
         """
@@ -318,7 +341,7 @@ class SpeechDiarizationPerChannelTask(BaseTask):
         """
         Get the transcription output channels.
 
-        :return: The transcription output channels.
+        :returns: The transcription output channels.
         """
         return self._transcription_output_channels
 
@@ -331,6 +354,16 @@ class SpeechDiarizationPerChannelTask(BaseTask):
                 self._error = self._transcription_output_channels
                 return
         super().do_task()
+
+    def to_tuple(self) -> Tuple[str, dict]:
+        """
+        Convert the task to a tuple to reconstruct it later (used for multiprocessing to pass in queue).
+
+        :returns: The converted task.
+        """
+        task_class, task_kwargs = super().to_tuple()
+        task_kwargs.pop("transcription_output")
+        return task_class, task_kwargs
 
     def _do_task(self):
         """
@@ -421,7 +454,7 @@ class BatchProcessor:
         """
         Get the tasks to perform.
 
-        :return: The tasks to perform.
+        :returns: The tasks to perform.
         """
         tasks = self._tasks
         self._tasks = []
@@ -439,7 +472,7 @@ class BatchProcessor:
         """
         Get the results of the tasks. The stored results are then cleared.
 
-        :return: The results of the tasks.
+        :returns: The results of the tasks.
         """
         results = self._results
         self._results = []
@@ -451,7 +484,7 @@ class BatchProcessor:
 
         :param batch_size: The batch size to progress the current file index.
 
-        :return: The current files to process.
+        :returns: The current files to process.
         """
         end_index = (
             self._current_file_index + batch_size
@@ -763,8 +796,8 @@ class Transcriber:
         :param batches_queue:   A multiprocessing queue to put the batches in.
         :param verbose:         Whether to show a progress bar. Default is False.
 
-        :return: The transcriptions outputs from the pipeline if no queue or batch processor is given, otherwise,
-                 `None`.
+        :returns: The transcriptions outputs from the pipeline if no queue or batch processor is given, otherwise,
+                  `None`.
         """
         # Wrap the audio files with a function to iterate over them via a generator (save memory and runtime with
         # Huggingface's pipelines as they preload each input while inference is running):
@@ -878,7 +911,7 @@ def _multiprocessing_process_batches(
 
         # Queue the tasks:
         for task in tasks:
-            tasks_queue.put(task)
+            tasks_queue.put(task.to_tuple())
 
     # Mark the end of the batches:
     for _ in range(n_task_completers):
@@ -893,11 +926,21 @@ def _multiprocessing_complete_tasks(tasks_queue: Queue, results_queue: Queue):
     :param tasks_queue:   A queue to get the tasks from.
     :param results_queue: A queue to put the results in.
     """
+    tasks_map = {
+        BaseTask.__name__: BaseTask,
+        SpeechDiarizationTask.__name__: SpeechDiarizationTask,
+        SpeechDiarizationPerChannelTask.__name__: SpeechDiarizationPerChannelTask,
+    }
+
     while True:
         # Get the task:
-        task: BaseTask = tasks_queue.get()
+        task = tasks_queue.get()
         if task == _MULTIPROCESSING_STOP_MARK:
             break
+
+        # Reconstruct the task:
+        task_class, task_kwargs = task
+        task = tasks_map[task_class](**task_kwargs)
 
         # Complete the task:
         task.do_task()
@@ -980,11 +1023,13 @@ def open_mpi_handler(
             # Join the data from all workers:
             if rank == 0:
                 context.logger.info("Collecting data from workers to root worker.")
+
                 # Check if there are different output directories:
                 output_directories = set([Path(out_dir) for out_dir, _, _ in output])
                 for r in range(1, size):
                     # True means the other workers should pass their files to the root worker (rank 0):
                     comm.send(len(output_directories) != 1, dest=r)
+
                 # If there are different output directories, listen to the other workers:
                 if len(output_directories) != 1:
                     # Collect the files from the other workers:
@@ -995,14 +1040,17 @@ def open_mpi_handler(
                     for file_name, file_content in files:
                         with open(output_directory / file_name, "w") as f:
                             f.write(file_content)
+
                 # Concatenate the dataframes:
                 dataframe = pd.concat(objs=[df for _, df, _ in output], axis=0)
+
                 # Concatenate the errors dictionaries:
                 errors_dictionary = reduce(
                     operator.ior, [err for _, _, err in output], {}
                 )
 
                 return str(output_directory), dataframe, errors_dictionary
+
             # Listen to rank 0 to see if there are different output directories and this rank need to send its files to
             # it:
             if comm.recv(source=0):
@@ -1273,7 +1321,7 @@ def _get_audio_files(
 
     :param data_path: The data path to collect the audio files from.
 
-    :return: The audio files list.
+    :returns: The audio files list.
     """
     # Check if given a list of paths:
     if isinstance(data_path, list):
@@ -1315,7 +1363,7 @@ def _run(
     :param transcriber:     The transcriber to use.
     :param verbose:         Verbosity.
 
-    :return: The collected results.
+    :returns: The collected results.
     """
     # Load the transcription pipeline:
     if verbose:
@@ -1351,7 +1399,7 @@ def _parallel_run(
     :param transcriber:     The transcriber to use.
     :param verbose:         Verbosity.
 
-    :return: The collected results.
+    :returns: The collected results.
     """
     # Initialize the multiprocessing queues:
     batches_queue = Queue()
@@ -1408,6 +1456,7 @@ def _parallel_run(
             results.append(result)
 
     # Wait for the processes to finish:
+    results_queue.empty()
     batch_processing_process.join()
     for p in task_completion_processes:
         p.join()

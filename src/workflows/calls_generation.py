@@ -18,8 +18,6 @@ import kfp
 from kfp import dsl
 import mlrun
 
-output_directory = os.path.abspath("./outputs")
-
 
 @kfp.dsl.pipeline()
 def pipeline(
@@ -70,6 +68,7 @@ def pipeline(
         project.run_function(
             db_management_function,
             handler="insert_clients",
+            name="insert-clients",
             inputs={
                 "clients": client_data_run.outputs["clients"],
             },
@@ -101,6 +100,7 @@ def pipeline(
         project.run_function(
             db_management_function,
             handler="insert_agents",
+            name="insert-agents",
             inputs={
                 "agents": agent_data_run.outputs["agents"],
             },
@@ -112,6 +112,7 @@ def pipeline(
     get_agents_run = project.run_function(
         db_management_function,
         handler="get_agents",
+        name="get-agents",
         returns=["agents: file"],
     ).after(generate_data_condition)
 
@@ -121,6 +122,7 @@ def pipeline(
     get_clients_run = project.run_function(
         db_management_function,
         handler="get_clients",
+        name="get-clients",
         returns=["clients: file"],
     ).after(generate_data_condition)
 
@@ -130,11 +132,9 @@ def pipeline(
     generate_conversations_run = project.run_function(
         conversations_generator_function,
         handler="generate_conversations",
+        name="conversation-generation",
         params={
             "amount": amount,
-            "output_directory": os.path.join(
-                output_directory, "generated_conversations"
-            ),
             "model_name": generation_model,
             "language": language,
             "min_time": min_time,
@@ -161,9 +161,9 @@ def pipeline(
     generate_multi_speakers_audio_run = project.run_function(
         text_to_audio_generator_function,
         handler="generate_multi_speakers_audio",
+        name="text-to-audio",
         inputs={"data_path": generate_conversations_run.outputs["conversations"]},
         params={
-            "output_directory": os.path.join(output_directory, "audio_files"),
             "speakers": {"Agent": 0, "Client": 1},
             "available_voices": available_voices,
             "use_small_models": text_to_speech_model == "small",
@@ -179,6 +179,7 @@ def pipeline(
     create_batch_for_analysis_run = project.run_function(
         conversations_generator_function,
         handler="create_batch_for_analysis",
+        name="bach-creation",
         inputs={
             "conversations_data": generate_conversations_run.outputs["metadata"],
             "audio_files": generate_multi_speakers_audio_run.outputs[

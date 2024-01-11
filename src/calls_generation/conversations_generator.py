@@ -16,6 +16,7 @@ import hashlib
 import os
 import pathlib
 import random
+import tempfile
 from typing import Tuple
 
 import mlrun
@@ -30,19 +31,19 @@ WORDS_IN_1_MINUTE = 240
 
 
 def generate_conversations(
-    context: mlrun.MLClientCtx,
-    amount: int,
-    output_directory: str,
-    agent_data: pd.DataFrame,
-    client_data: pd.DataFrame,
-    model_name: str = "gpt-3.5-turbo",
-    language: str = "en",
-    min_time: int = 2,
-    max_time: int = 5,
-    from_date: str = "01.01.2023",
-    to_date: str = "01.03.2023",
-    from_time: str = "09:00",
-    to_time: str = "17:00",
+        context: mlrun.MLClientCtx,
+        amount: int,
+        agent_data: pd.DataFrame,
+        client_data: pd.DataFrame,
+        output_directory: str = None,
+        model_name: str = "gpt-3.5-turbo",
+        language: str = "en",
+        min_time: int = 2,
+        max_time: int = 5,
+        from_date: str = "01.01.2023",
+        to_date: str = "01.03.2023",
+        from_time: str = "09:00",
+        to_time: str = "17:00",
 
 ) -> Tuple[str, pd.DataFrame, pd.DataFrame]:
     """
@@ -50,9 +51,9 @@ def generate_conversations(
 
     :param context:             The MLRun context.
     :param amount:              The number of conversations to generate.
-    :param output_directory:    The directory to save the conversations to.
     :param agent_data:          The agent data to use for the conversations.
     :param client_data:         The client data to use for the conversations.
+    :param output_directory:    The directory to save the conversations to.
     :param model_name:          The name of the model to use for conversation generation.
                                 You should choose one of GPT-4 or GPT-3.5 from the list here:
                                 https://platform.openai.com/docs/models. Default: 'gpt-3.5-turbo'.
@@ -131,8 +132,11 @@ def generate_conversations(
     llm = ChatOpenAI(model=model_name)
 
     # Create the output directory:
+    if output_directory is None:
+        output_directory = tempfile.mkdtemp()
     output_directory = pathlib.Path(output_directory)
-    output_directory.mkdir(exist_ok=True)
+    if not output_directory.exists():
+        output_directory.mkdir(parents=True, exist_ok=True)
 
     # Start generating conversations:
     conversations = []

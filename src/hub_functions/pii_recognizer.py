@@ -17,8 +17,7 @@ import os
 import pathlib
 import tempfile
 import warnings
-from collections.abc import Iterable
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import List, Set, Tuple, Union
 
 import annotated_text.util as at_util
 import mlrun
