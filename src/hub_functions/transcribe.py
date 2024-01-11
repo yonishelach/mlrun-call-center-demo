@@ -997,12 +997,13 @@ def open_mpi_handler(
                     operator.ior, [err for _, _, err in output], {}
                 )
                 # Send message to other ranks to stop:
-                comm.bcast(obj="STOP", root=0)
+                for r in range(1, size):
+                    comm.send(obj="STOP", dest=r)
 
                 return str(output_directory), dataframe, errors_dictionary
             else:
                 # Wait for the root rank to finish:
-                comm.bcast(obj="STOP", root=0)
+                comm.recv(source=0)
             return None
 
         return wrapper
