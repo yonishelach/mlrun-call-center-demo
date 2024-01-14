@@ -98,29 +98,8 @@ class Call(Base):
         nullable=True,
         default=None,
     )
-    translation_file: Mapped[Optional[str]] = mapped_column(
-        String(length=FILE_PATH_LENGTH),
-        nullable=True,
-        default=None,
-    )
     anonymized_file: Mapped[Optional[str]] = mapped_column(
         String(length=FILE_PATH_LENGTH),
-        nullable=True,
-        default=None,
-    )
-    # Transcription:
-    duration: Mapped[Optional[int]] = mapped_column(
-        Integer(),
-        nullable=True,
-        default=None,
-    )
-    language: Mapped[Optional[str]] = mapped_column(
-        String(length=3),
-        nullable=True,
-        default=None,
-    )
-    language_probability: Mapped[Optional[float]] = mapped_column(
-        Float(),
         nullable=True,
         default=None,
     )
@@ -219,14 +198,6 @@ def update_calls(
     data_key: str,
     data: pd.DataFrame,
 ):
-    """
-
-    :param context:
-    :param status:
-    :param table_key:
-    :param data_key:
-    :param data:
-    """
     # Create an engine:
     engine = create_engine(url=context.get_secret(key=ProjectSecrets.MYSQL_URL))
 

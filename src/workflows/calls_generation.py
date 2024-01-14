@@ -23,7 +23,7 @@ import mlrun
 def pipeline(
     amount: int,
     generation_model: str,
-    text_to_speech_model: str,
+    use_small_models: bool,
     language: str,
     available_voices: List[str],
     min_time: int,
@@ -166,7 +166,7 @@ def pipeline(
         params={
             "speakers": {"Agent": 0, "Client": 1},
             "available_voices": available_voices,
-            "use_small_models": text_to_speech_model == "small",
+            "use_small_models": use_small_models,
         },
         returns=[
             "audio_files: path",
