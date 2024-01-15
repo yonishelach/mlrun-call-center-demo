@@ -212,7 +212,7 @@ def pipeline(
     answer_questions_run = project.run_function(
         question_answering_function,
         handler="answer_questions",
-        name="question-answering",
+        name="analysis",
         inputs={"data_path": recognize_pii_run.outputs["anonymized_files"]},
         params={
             "verbose": True,
