@@ -2,8 +2,9 @@ import pandas as pd
 
 
 def postprocess_answers(answers: pd.DataFrame):
-    answers["concern_addressed"] = answers["concern_addressed"].apply(
-        lambda x: "yes" in x
-    )
+    for column in ["concern_addressed", "upsale_attempted", "upsale_success"]:
+        answers[column] = answers[column].apply(
+            lambda x: "yes" in x.casefold()
+        )
 
     return answers
