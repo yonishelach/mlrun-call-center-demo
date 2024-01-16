@@ -129,6 +129,46 @@ class Call(Base):
         nullable=True,
         default=None,
     )
+    upsale_attempted: Mapped[Optional[bool]] = mapped_column(
+        Boolean(),
+        nullable=True,
+        default=None,
+    )
+    upsale_success: Mapped[Optional[bool]] = mapped_column(
+        Boolean(),
+        nullable=True,
+        default=None,
+    )
+    empathy: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
+    professionalism: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
+    kindness: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
+    effective_communication: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
+    active_listening: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
+    customization: Mapped[Optional[int]] = mapped_column(
+        Integer(),
+        nullable=True,
+        default=None,
+    )
 
     # One-to-many relationships:
     client: Mapped["Client"] = relationship(back_populates="calls", lazy=True)
