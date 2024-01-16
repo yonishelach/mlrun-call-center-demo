@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 from typing import List
 
 import kfp
@@ -19,12 +18,25 @@ import mlrun
 
 from src.common import TONES, TOPICS, CallStatus
 
+
 QUESTIONS = [
-    f"Classify the topic of the text from the following list (choose one): {TOPICS}",
-    "Write a long summary of the text, focus on the topic (max 50 words).",
-    "Was the Client's concern addressed, (choose one) [Yes, No]?",
-    f"Was the Client tone (choose one) {TONES}? ",
-    f"Was the Call Center Agent tone (choose one) {TONES}?",
+    [
+        f"1. Classify the topic of the text from the following list (choose one): {TOPICS}",
+        "2. Write a long summary of the text, focus on the topic (max 50 words).",
+        "3. Was the Client's concern addressed, (choose only one) [Yes, No]?",
+        f"4. Was the Client tone (choose only one, if not sure choose Neutral) {TONES}? ",
+        f"5. Was the Call Center Agent tone (choose only one, if not sure choose Neutral) {TONES}?",
+    ],
+    [
+        "1. Did the agent try to upsale the customer (choose only one) [Yes, No]? (sell any additional product or service)",
+        "2. If the agent indeed try to upsale the client, did he succeed (choose only one) [Yes, No]? if he didn't try' answer No",
+        "3. Rate the agent's level of empathy (The ability to understand and share the feelings of others) on a scale of 1-5.",
+        "4. Rate the agent's level of professionalism (Conducting oneself in a way that is appropriate for the workplace) on a scale of 1-5.",
+        "5. Rate the agent's level of kindness (The quality of being friendly, generous, and considerate) on a scale of 1-5.",
+        "6. Rate the agent's level of effective communication (The ability to convey information clearly and concisely) on a scale of 1-5.",
+        "7. Rate the agent's level of active listening (The process of paying attention to and understanding what someone is saying) on a scale of 1-5.",
+        "8. Rate the agent's level of customization (The process of tailoring something to the specific needs or preferences of an individual) on a scale of 1-5.",
+    ]
 ]
 DEMO_CALL = (
     "Agent: Good afternoon, you've reached [Internet Service Provider] customer support. I'm Megan. How can I assist "
@@ -46,35 +58,38 @@ DEMO_CALL = (
     "Customer: You too! Goodbye, Megan.\n"
     "Agent: Goodbye, Lisa!"
 )
-DEMO_ANSWERS = (
+DEMO_ANSWERS = [(
     "1. billing discrepancies\n"
     "2. The customer, contacted the call center regarding billing discrepancies on her statement. The agent, "
     "acknowledged the issue, assured The customer it would be resolved, and escalated it to the billing department for "
     "correction.\n"
-    "3. Yes\n"
-    "4. Natural\n"
-    "5. positive"
-)
-NEWLINE = "\n"
-DEMO_QUESTIONS = "".join(
-    [
-        f"{i + 1}. {q}{NEWLINE if i + 1 < len(QUESTIONS) else ''}"
-        for i, q in enumerate(QUESTIONS)
-    ]
-)
-TEXT_WRAPPER = (
-    "<|im_start|>system: You are an AI assistant that answers questions accurately and shortly<|im_end|>\n"
+    "3. Yes.\n"
+    "4. Natural.\n"
+    "5. positive.\n"),
+
+    (
+    "1. No\n"
+    "2. No\n"
+    "3. 4\n"
+    "4. 5\n"
+    "5. 4\n"
+    "6. 5\n"
+    "7. 4\n"
+    "8. 3"
+)]
+TEXT_WRAPPER = [(
+    f"<|im_start|>system: You are an AI assistant that answers questions accurately and shortly<|im_end|>\n"
     f"<|im_start|>user: Given the following text:\n"
     f"{DEMO_CALL}\n"
     f"answer the questions as accurately as you can:\n"
-    f"{DEMO_QUESTIONS}<|im_end|>\n"
+    f"{QUESTIONS[i]}<|im_end|>\n"
     f"<|im_start|>assistant:\n"
-    f"{DEMO_ANSWERS}<|im_end|>\n"
+    f"{DEMO_ANSWERS[i]}<|im_end|>\n"
     f"<|im_start|>user: Given the following text:\n"
     "{}"
-)
+) for i in range(len(QUESTIONS))]
 QUESTIONS_WRAPPER = (
-    " answer the questions as accurately as you can:\n"
+    " answer the given questions as accurately as you can, do not write more answers the questions:\n"
     "{}<|im_end|>\n"
     "<|im_start|>assistant:\n"
 )
@@ -85,6 +100,7 @@ def pipeline(
     batch: str,
     calls_audio_files: str,
     transcribe_model: str,
+    translate_to_english: bool,
     pii_recognition_model: str,
     pii_recognition_entities: List[str],
     pii_recognition_entity_operator_map: List[str],
@@ -149,6 +165,7 @@ def pipeline(
             "device": "cuda",
             "use_better_transformers": True,
             "batch_size": batch_size,
+            "translate_to_english": translate_to_english,
 
         },
         returns=[
@@ -229,10 +246,18 @@ def pipeline(
                 "client_tone",
                 "agent_tone",
             ],
+            "questions_config": [
+                {},
+                {
+                    "type": "poll",
+                    "poll_count": 3,
+                    "poll_strategy": "most_common"
+                }
+            ],
             "generation_config": {
                 "max_new_tokens": 250,
                 "do_sample": True,
-                "temperature": 0.1,
+                "temperature": 0.7,
                 "top_p": 0.95,
                 "top_k": 40,
                 "repetition_penalty": 1.1,
