@@ -102,7 +102,7 @@ def generate_conversations(
     # Create the prompt structure:
     prompt_structure = (
         "Generate a conversation between an internet provider call center agent named {agent_name} from (“Iguazio-Mckinsey Internet”) and "
-        "a client named {client_name} with email: {client_email} and phone number: {client_phone} in {language} except Agent and Client prefixes which are constants.\n"
+        "a client named {client_name} with email: {client_email} and phone number: {client_phone} in {language} except 'Agent' and 'Client' prefixes which are constants.\n"
         "Format the conversation as follow:\n"
         "Agent: <text here>\n"
         "Client: <text here>\n"
