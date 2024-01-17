@@ -171,7 +171,7 @@ def pipeline(
         returns=[
             "audio_files: path",
             "audio_files_dataframe: dataset",
-            "text_to_speech_errors: file",
+            "errors: file",
         ],
     )
 
